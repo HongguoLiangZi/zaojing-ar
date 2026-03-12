@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>作品集</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@200;300;400&family=DM+Mono:ital,wght@0,300;0,400;1,300&family=Cormorant+Garamond:ital,wght@0,300;1,300&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink:     #0a0d14;
+  --deep:    #111622;
+  --slate:   #1c2333;
+  --mist:    #8a9ab8;
+  --ghost:   #c8d0e0;
+  --white:   #f0f2f6;
+  --pink:    #e8b4c0;
+  --pinkdim: #c4909e;
+  --line:    rgba(138,154,184,0.18);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--ink);
+  color: var(--white);
+  font-family: 'DM Mono', monospace;
+  overflow-x: hidden;
+}
+
+/* ─── 噪点纹理覆盖 ─── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 1000; opacity: 0.6;
+}
+
+/* ════════════════════════════════
+   封面页
+════════════════════════════════ */
+.cover {
+  width: 100vw; min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 左侧深色板 */
+.cover-left {
+  background: var(--deep);
+  padding: 64px 56px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  z-index: 2;
+}
+
+/* 右侧图像区 */
+.cover-right {
+  position: relative;
+  background: var(--slate);
+  overflow: hidden;
+}
+
+/* 藻井几何背景 */
+.cover-right svg {
+  position: absolute;
+  inset: 0; width: 100%; height: 100%;
+}
+
+/* 右侧文字叠加 */
+.cover-right-text {
+  position: absolute;
+  bottom: 64px; left: 48px;
+  z-index: 3;
+}
+
+/* 顶部标记 */
+.cover-mark {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.mark-line {
+  width: 32px; height: 1px;
+  background: var(--pinkdim);
+}
+.mark-text {
+  font-size: 9px;
+  letter-spacing: 0.45em;
+  color: var(--pinkdim);
+  text-transform: uppercase;
+}
+
+/* 主标题 */
+.cover-title {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 48px 0;
+}
+
+.title-num {
+  font-size: 10px;
+  letter-spacing: 0.4em;
+  color: var(--mist);
+  margin-bottom: 24px;
+  opacity: 0;
+  animation: fadeUp 1s ease 0.3s forwards;
+}
+
+.title-zh {
+  font-family: 'Noto Serif SC', serif;
+  font-size: clamp(52px, 6vw, 80px);
+  font-weight: 200;
+  line-height: 1.1;
+  letter-spacing: 0.08em;
+  color: var(--white);
+  opacity: 0;
+  animation: fadeUp 1s ease 0.5s forwards;
+}
+
+.title-zh em {
+  font-style: normal;
+  color: var(--pink);
+}
+
+.title-en {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 14px;
+  font-weight: 300;
+  letter-spacing: 0.2em;
+  color: var(--mist);
+  margin-top: 20px;
+  opacity: 0;
+  animation: fadeUp 1s ease 0.7s forwards;
+}
+
+/* 分隔线 */
+.cover-divider {
+  width: 100%; height: 1px;
+  background: var(--line);
+  margin: 20px 0;
+  opacity: 0;
+  animation: fadeIn 1s ease 0.9s forwards;
+}
+
+/* 底部信息 */
+.cover-meta {
+  opacity: 0;
+  animation: fadeUp 1s ease 1.1s forwards;
+}
+
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+}
+
+.meta-name {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 13px;
+  font-weight: 300;
+  letter-spacing: 0.15em;
+  color: var(--ghost);
+}
+
+.meta-detail {
+  font-size: 8px;
+  letter-spacing: 0.35em;
+  color: var(--mist);
+  line-height: 2.2;
+  text-align: right;
+}
+
+/* 右侧装饰 */
+.cover-index {
+  position: absolute;
+  top: 64px; right: 40px;
+  writing-mode: vertical-rl;
+  font-size: 8px;
+  letter-spacing: 0.4em;
+  color: rgba(138,154,184,0.3);
+  z-index: 3;
+}
+
+.right-label {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 48px;
+  font-weight: 200;
+  letter-spacing: 0.2em;
+  color: rgba(240,242,246,0.08);
+  line-height: 1;
+}
+
+.right-sub {
+  font-size: 9px;
+  letter-spacing: 0.4em;
+  color: var(--pink);
+  margin-top: 12px;
+  opacity: 0.7;
+}
+
+/* 粉色角标装饰 */
+.corner-accent {
+  position: absolute;
+  width: 48px; height: 48px;
+}
+.corner-accent.tl { top: 0; left: 0; border-top: 1px solid var(--pinkdim); border-left: 1px solid var(--pinkdim); }
+.corner-accent.br { bottom: 0; right: 0; border-bottom: 1px solid var(--pinkdim); border-right: 1px solid var(--pinkdim); }
+
+/* ════════════════════════════════
+   目录页
+════════════════════════════════ */
+.toc {
+  width: 100vw; min-height: 100vh;
+  background: var(--ink);
+  padding: 80px 10vw;
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 64px;
+}
+
+/* 目录顶部 */
+.toc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 32px;
+}
+
+.toc-title-zh {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 0.5em;
+  color: var(--mist);
+}
+
+.toc-title-big {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 52px;
+  font-weight: 300;
+  color: var(--white);
+  letter-spacing: 0.05em;
+  line-height: 1;
+  margin-top: 8px;
+}
+
+.toc-year {
+  font-size: 9px;
+  letter-spacing: 0.4em;
+  color: var(--mist);
+  text-align: right;
+  line-height: 2;
+}
+
+/* 目录条目 */
+.toc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.toc-item {
+  display: grid;
+  grid-template-columns: 40px 1fr auto 48px;
+  align-items: center;
+  gap: 32px;
+  padding: 28px 0;
+  border-bottom: 1px solid var(--line);
+  cursor: default;
+  transition: all 0.35s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.toc-item::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 0;
+  background: rgba(232,180,192,0.04);
+  transition: width 0.4s ease;
+}
+.toc-item:hover::before { width: 100%; }
+
+.toc-num {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--pinkdim);
+  font-family: 'DM Mono', monospace;
+}
+
+.toc-content {}
+
+.toc-zh {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 18px;
+  font-weight: 300;
+  letter-spacing: 0.12em;
+  color: var(--white);
+  line-height: 1;
+  transition: color 0.3s;
+}
+.toc-item:hover .toc-zh { color: var(--pink); }
+
+.toc-en {
+  font-size: 9px;
+  letter-spacing: 0.35em;
+  color: var(--mist);
+  margin-top: 7px;
+  text-transform: uppercase;
+}
+
+.toc-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.toc-tag {
+  font-size: 7px;
+  letter-spacing: 0.25em;
+  color: var(--mist);
+  border: 1px solid var(--line);
+  padding: 3px 8px;
+  transition: all 0.3s;
+}
+.toc-item:hover .toc-tag {
+  border-color: rgba(232,180,192,0.25);
+  color: var(--pink);
+}
+.toc-tag.pink {
+  border-color: rgba(232,180,192,0.3);
+  color: var(--pinkdim);
+}
+
+.toc-page {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: rgba(138,154,184,0.3);
+  text-align: right;
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+}
+
+/* 目录底部装饰 */
+.toc-footer {
+  position: absolute;
+  bottom: 48px; right: 10vw;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.toc-footer-line {
+  width: 40px; height: 1px;
+  background: var(--pinkdim);
+  opacity: 0.4;
+}
+.toc-footer-text {
+  font-size: 8px;
+  letter-spacing: 0.4em;
+  color: rgba(138,154,184,0.3);
+}
+
+/* ─── 动画 ─── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* TOC进场 */
+.toc-item {
+  opacity: 0;
+  animation: fadeUp 0.7s ease forwards;
+}
+.toc-item:nth-child(1) { animation-delay: 0.1s; }
+.toc-item:nth-child(2) { animation-delay: 0.2s; }
+.toc-item:nth-child(3) { animation-delay: 0.3s; }
+.toc-item:nth-child(4) { animation-delay: 0.4s; }
+.toc-item:nth-child(5) { animation-delay: 0.5s; }
+.toc-item:nth-child(6) { animation-delay: 0.6s; }
+
+/* 竖向文字装饰 */
+.vert-text {
+  writing-mode: vertical-rl;
+  font-size: 8px;
+  letter-spacing: 0.5em;
+  color: rgba(138,154,184,0.15);
+  position: absolute;
+}
+
+/* 页码指示 */
+.page-indicator {
+  position: fixed;
+  right: 24px; top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 50;
+}
+.pi-dot {
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--mist);
+  opacity: 0.3;
+  transition: all 0.3s;
+  cursor: pointer;
+}
+.pi-dot.active { opacity: 1; background: var(--pink); transform: scale(1.5); }
+</style>
+</head>
+<body>
+
+<!-- 页码指示 -->
+<div class="page-indicator">
+  <div class="pi-dot active" onclick="scrollTo(0,0)"></div>
+  <div class="pi-dot" onclick="document.querySelector('.toc').scrollIntoView({behavior:'smooth'})"></div>
+</div>
+
+<!-- ════ 封面 ════ -->
+<section class="cover">
+
+  <!-- 左侧 -->
+  <div class="cover-left">
+    <div class="corner-accent tl"></div>
+
+    <!-- 顶部标记 -->
+    <div class="cover-mark">
+      <div class="mark-line"></div>
+      <div class="mark-text">Digital Media Art · Portfolio</div>
+    </div>
+
+    <!-- 主标题 -->
+    <div class="cover-title">
+      <div class="title-num">001 / 作品集</div>
+      <div class="title-zh">
+        数字<br>
+        媒体<br>
+        <em>艺术</em>
+      </div>
+      <div class="title-en">Digital Media Art / Graduate Portfolio</div>
+    </div>
+
+    <div class="cover-divider"></div>
+
+    <!-- 底部信息 -->
+    <div class="cover-meta">
+      <div class="meta-row">
+        <div class="meta-name">홍궈량쯔<br><span style="font-size:10px;letter-spacing:0.3em;color:var(--mist)">作者姓名</span></div>
+        <div class="meta-detail">
+          <div>考研作品集</div>
+          <div>2024 — 2025</div>
+          <div style="color:var(--pink);margin-top:4px">数字媒体艺术</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="corner-accent br"></div>
+  </div>
+
+  <!-- 右侧 -->
+  <div class="cover-right">
+    <!-- 藻井几何SVG背景 -->
+    <svg viewBox="0 0 600 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="rg" cx="50%" cy="50%" r="55%">
+          <stop offset="0%" stop-color="#1c2333"/>
+          <stop offset="100%" stop-color="#0a0d14"/>
+        </radialGradient>
+      </defs>
+      <rect width="600" height="800" fill="url(#rg)"/>
+
+      <!-- 同心圆组 -->
+      <g transform="translate(300,400)" stroke-width="1" fill="none">
+        <circle r="280" stroke="rgba(138,154,184,0.06)"/>
+        <circle r="230" stroke="rgba(138,154,184,0.08)"/>
+        <circle r="180" stroke="rgba(138,154,184,0.10)"/>
+        <circle r="130" stroke="rgba(138,154,184,0.12)"/>
+        <circle r="90"  stroke="rgba(232,180,192,0.15)"/>
+        <circle r="55"  stroke="rgba(232,180,192,0.20)"/>
+        <circle r="28"  stroke="rgba(232,180,192,0.25)"/>
+
+        <!-- 中心方格 -->
+        <rect x="-22" y="-22" width="44" height="44" stroke="rgba(232,180,192,0.3)" stroke-width="1.5"/>
+        <rect x="-14" y="-14" width="28" height="28" stroke="rgba(232,180,192,0.2)"/>
+        <rect x="-6"  y="-6"  width="12" height="12" fill="rgba(232,180,192,0.15)" stroke="none"/>
+
+        <!-- 십자선 -->
+        <line x1="0" y1="-280" x2="0" y2="-30" stroke="rgba(138,154,184,0.08)"/>
+        <line x1="0" y1="30"   x2="0" y2="280"  stroke="rgba(138,154,184,0.08)"/>
+        <line x1="-280" y1="0" x2="-30" y2="0"  stroke="rgba(138,154,184,0.08)"/>
+        <line x1="30"   y1="0" x2="280" y2="0"  stroke="rgba(138,154,184,0.08)"/>
+
+        <!-- 사선 -->
+        <line x1="-198" y1="-198" x2="-22" y2="-22" stroke="rgba(138,154,184,0.05)"/>
+        <line x1="198"  y1="-198" x2="22"  y2="-22" stroke="rgba(138,154,184,0.05)"/>
+        <line x1="-198" y1="198"  x2="-22" y2="22"  stroke="rgba(138,154,184,0.05)"/>
+        <line x1="198"  y1="198"  x2="22"  y2="22"  stroke="rgba(138,154,184,0.05)"/>
+
+        <!-- 刻度点 -->
+        <g fill="rgba(232,180,192,0.35)">
+          <circle cx="0"    cy="-90"  r="2.5"/>
+          <circle cx="90"   cy="0"    r="2.5"/>
+          <circle cx="0"    cy="90"   r="2.5"/>
+          <circle cx="-90"  cy="0"    r="2.5"/>
+          <circle cx="64"   cy="-64"  r="1.8"/>
+          <circle cx="64"   cy="64"   r="1.8"/>
+          <circle cx="-64"  cy="-64"  r="1.8"/>
+          <circle cx="-64"  cy="64"   r="1.8"/>
+        </g>
+        <g fill="rgba(138,154,184,0.2)">
+          <circle cx="0"    cy="-130" r="2"/>
+          <circle cx="130"  cy="0"    r="2"/>
+          <circle cx="0"    cy="130"  r="2"/>
+          <circle cx="-130" cy="0"    r="2"/>
+          <circle cx="0"    cy="-180" r="1.5"/>
+          <circle cx="180"  cy="0"    r="1.5"/>
+          <circle cx="0"    cy="180"  r="1.5"/>
+          <circle cx="-180" cy="0"    r="1.5"/>
+        </g>
+      </g>
+    </svg>
+
+    <!-- 右侧竖排标题 -->
+    <div class="cover-index">ZAOJING · AR · 2024 · DMA</div>
+
+    <div class="cover-right-text">
+      <div class="right-label">藻井</div>
+      <div class="right-sub">ZAOJING · DIGITAL RECONSTRUCTION</div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ════ 目录页 ════ -->
+<section class="toc">
+  <div class="vert-text" style="left:4vw;top:15%">CONTENTS · 目录 · INDEX</div>
+
+  <!-- 目录标题 -->
+  <div class="toc-header">
+    <div>
+      <div class="toc-title-zh">目 录</div>
+      <div class="toc-title-big">Contents</div>
+    </div>
+    <div class="toc-year">
+      <div>数字媒体艺术</div>
+      <div>考研作品集</div>
+      <div style="color:var(--pink);margin-top:8px">2024 — 2025</div>
+    </div>
+  </div>
+
+  <!-- 目录列表 -->
+  <div class="toc-list">
+
+    <div class="toc-item">
+      <div class="toc-num">00</div>
+      <div class="toc-content">
+        <div class="toc-zh">个人陈述</div>
+        <div class="toc-en">Artist Statement</div>
+      </div>
+      <div class="toc-tags">
+        <span class="toc-tag">TEXT</span>
+      </div>
+      <div class="toc-page">03</div>
+    </div>
+
+    <div class="toc-item">
+      <div class="toc-num">01</div>
+      <div class="toc-content">
+        <div class="toc-zh">藻井 · 数字重构</div>
+        <div class="toc-en">Zaojing · Digital Reconstruction</div>
+      </div>
+      <div class="toc-tags">
+        <span class="toc-tag pink">AR</span>
+        <span class="toc-tag">3D</span>
+        <span class="toc-tag">NPR</span>
+      </div>
+      <div class="toc-page">05</div>
+    </div>
+
+    <div class="toc-item">
+      <div class="toc-num">02</div>
+      <div class="toc-content">
+        <div class="toc-zh">项目二</div>
+        <div class="toc-en">Project Title · Subtitle</div>
+      </div>
+      <div class="toc-tags">
+        <span class="toc-tag">DESIGN</span>
+        <span class="toc-tag">2D</span>
+      </div>
+      <div class="toc-page">10</div>
+    </div>
+
+    <div class="toc-item">
+      <div class="toc-num">03</div>
+      <div class="toc-content">
+        <div class="toc-zh">项目三</div>
+        <div class="toc-en">Project Title · Subtitle</div>
+      </div>
+      <div class="toc-tags">
+        <span class="toc-tag">VIDEO</span>
+        <span class="toc-tag pink">MOTION</span>
+      </div>
+      <div class="toc-page">15</div>
+    </div>
+
+    <div class="toc-item">
+      <div class="toc-num">04</div>
+      <div class="toc-content">
+        <div class="toc-zh">项目四</div>
+        <div class="toc-en">Project Title · Subtitle</div>
+      </div>
+      <div class="toc-tags">
+        <span class="toc-tag">UI/UX</span>
+      </div>
+      <div class="toc-page">20</div>
+    </div>
+
+    <div class="toc-item">
+      <div class="toc-num">05</div>
+      <div class="toc-content">
+        <div class="toc-zh">技能与工具</div>
+        <div class="toc-en">Skills & Tools</div>
+      </div>
+      <div class="toc-tags">
+        <span class="toc-tag">INFO</span>
+      </div>
+      <div class="toc-page">25</div>
+    </div>
+
+  </div>
+
+  <div class="toc-footer">
+    <div class="toc-footer-line"></div>
+    <div class="toc-footer-text">DIGITAL MEDIA ART · GRADUATE PORTFOLIO · 2024</div>
+  </div>
+</section>
+
+<script>
+// 页码指示点联动
+const dots = document.querySelectorAll('.pi-dot');
+const sections = document.querySelectorAll('section');
+
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const idx = [...sections].indexOf(entry.target);
+      dots.forEach((d,i) => d.classList.toggle('active', i === idx));
+    }
+  });
+}, { threshold: 0.5 });
+
+sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>
