@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>藻井 · AR体验</title>
+
+  <!-- ✅ 修复：先加载 A-Frame，再加载 MindAR -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+  <!-- 字体 -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@200;300&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #03060f; overflow: hidden; }
+
+    /* ════════════════════════════════════
+       圆形扩散进场动画
+    ════════════════════════════════════ */
+    #circle-intro {
+      position: fixed; inset: 0; z-index: 2000;
+      background: #03060f;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none;
+    }
+    .ci-ring {
+      position: absolute;
+      border-radius: 50%;
+      border: 1px solid rgba(100,180,255,0.5);
+      animation: ci-expand 2s cubic-bezier(0.16,1,0.3,1) forwards;
+    }
+    .ci-ring:nth-child(1){ width:60px; height:60px; animation-delay:0s; }
+    .ci-ring:nth-child(2){ width:60px; height:60px; animation-delay:0.15s; border-color:rgba(100,180,255,0.3); }
+    .ci-ring:nth-child(3){ width:60px; height:60px; animation-delay:0.3s;  border-color:rgba(100,180,255,0.15); }
+    .ci-dot {
+      width:8px; height:8px; border-radius:50%;
+      background:rgba(100,180,255,0.9);
+      animation: ci-dot-fade 2s ease forwards;
+    }
+    @keyframes ci-expand {
+      0%  { transform:scale(1); opacity:1; }
+      100%{ transform:scale(45); opacity:0; }
+    }
+    @keyframes ci-dot-fade {
+      0%  { opacity:1; transform:scale(1); }
+      60% { opacity:1; transform:scale(1.5); }
+      100%{ opacity:0; transform:scale(0); }
+    }
+
+    /* ════════════════════════════════════
+       应用容器（前置内容三屏）
+    ════════════════════════════════════ */
+    #app {
+      position: fixed; inset: 0; z-index: 100;
+      opacity: 0; transition: opacity 0.6s ease;
+      font-family: 'Share Tech Mono', monospace;
+    }
+    #app.visible { opacity: 1; }
+
+    .screen {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.4,0,0.2,1);
+      overflow-y: auto;
+    }
+    .screen.hidden     { opacity:0; pointer-events:none; transform:translateX(60px); }
+    .screen.hidden-back{ opacity:0; pointer-events:none; transform:translateX(-60px); }
+    .screen.active     { opacity:1; pointer-events:all; transform:translateX(0); }
+
+    /* ── 导航条 ── */
+    .nav-bar {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:18px 24px;
+      border-bottom:1px solid rgba(100,180,255,0.08);
+      flex-shrink:0;
+    }
+    .nav-logo {
+      font-size:10px; letter-spacing:0.4em;
+      color:rgba(100,180,255,0.5);
+    }
+    .nav-dots { display:flex; gap:8px; }
+    .nav-dot {
+      width:5px; height:5px; border-radius:50%;
+      background:rgba(100,180,255,0.15);
+      cursor:pointer; transition:background 0.3s;
+    }
+    .nav-dot.active { background:rgba(100,180,255,0.7); }
+    .nav-page { font-size:10px; letter-spacing:0.2em; color:rgba(100,180,255,0.25); }
+
+    /* ── 通用内容区 ── */
+    .content-area { padding:24px 24px 32px; flex:1; }
+
+    .tag {
+      font-size:9px; letter-spacing:0.4em;
+      color:rgba(100,180,255,0.45);
+      margin-bottom:10px;
+    }
+    .screen-title {
+      font-size: clamp(22px,6vw,32px);
+      font-family:'Noto Serif SC', serif;
+      font-weight:200;
+      letter-spacing:0.2em;
+      color:rgba(200,225,255,0.9);
+      margin-bottom:4px;
+    }
+    .screen-sub {
+      font-size:9px; letter-spacing:0.3em;
+      color:rgba(100,180,255,0.3);
+      margin-bottom:20px;
+    }
+    .blue-rule { width:28px; height:1px; background:rgba(100,180,255,0.5); margin-bottom:20px; }
+
+    /* ── 第1屏：介绍 ── */
+    #screen-intro { background:#03060f; }
+
+    .hero-img {
+      width:100%; height:42vw; max-height:260px; min-height:160px;
+      object-fit:cover; display:block; flex-shrink:0;
+      opacity:0.88;
+    }
+    .hero-label {
+      font-size:9px; letter-spacing:0.3em;
+      color:rgba(100,180,255,0.35);
+      padding:8px 24px;
+      border-bottom:1px solid rgba(100,180,255,0.06);
+      flex-shrink:0;
+    }
+
+    .body-text {
+      font-size:13px; line-height:2;
+      color:rgba(160,200,240,0.65);
+      margin-bottom:14px;
+      letter-spacing:0.04em;
+      font-family:'Noto Serif SC', serif;
+      font-weight:200;
+    }
+
+    /* 数据格栅 */
+    .data-grid {
+      display:grid; grid-template-columns:1fr 1fr;
+      gap:1px; background:rgba(100,180,255,0.06);
+      border:1px solid rgba(100,180,255,0.06);
+      margin:20px 0;
+    }
+    .data-cell { background:#03060f; padding:14px 16px; }
+    .data-cell .lbl {
+      font-size:8px; letter-spacing:0.35em;
+      color:rgba(100,180,255,0.3); margin-bottom:5px;
+    }
+    .data-cell .val {
+      font-size:14px; letter-spacing:0.05em;
+      color:rgba(200,225,255,0.85);
+      font-family:'Noto Serif SC', serif; font-weight:200;
+    }
+    .data-cell .val.blue { color:rgba(100,180,255,0.85); }
+
+    /* 项目说明块 */
+    .note-block {
+      border-left:1px solid rgba(100,180,255,0.4);
+      padding:12px 16px;
+      margin:20px 0;
+      background:rgba(100,180,255,0.03);
+    }
+    .note-block .note-title {
+      font-size:9px; letter-spacing:0.35em;
+      color:rgba(100,180,255,0.5); margin-bottom:8px;
+    }
+    .note-block p {
+      font-size:12.5px; line-height:1.95;
+      color:rgba(140,190,230,0.6);
+      letter-spacing:0.04em;
+      font-family:'Noto Serif SC', serif; font-weight:200;
+    }
+
+    /* 下一屏提示箭头 */
+    .next-hint {
+      display:flex; flex-direction:column; align-items:center; gap:8px;
+      padding:20px 0 28px; cursor:pointer;
+    }
+    .next-hint .hint-txt {
+      font-size:9px; letter-spacing:0.35em;
+      color:rgba(100,180,255,0.25);
+    }
+    .next-hint .arrow {
+      width:20px; height:20px;
+      border-right:1px solid rgba(100,180,255,0.3);
+      border-bottom:1px solid rgba(100,180,255,0.3);
+      transform:rotate(45deg);
+      animation:bounce-a 2s ease-in-out infinite;
+    }
+    @keyframes bounce-a {
+      0%,100%{ transform:rotate(45deg) translateY(0); }
+      50%    { transform:rotate(45deg) translateY(4px); }
+    }
+
+    /* 底部导航按钮行 */
+    .nav-btn-row {
+      display:flex; justify-content:space-between;
+      padding:10px 24px;
+      border-top:1px solid rgba(100,180,255,0.06);
+      flex-shrink:0;
+    }
+    .nav-btn {
+      background:none; border:none; cursor:pointer;
+      font-family:'Share Tech Mono', monospace;
+      font-size:10px; letter-spacing:0.3em;
+      color:rgba(100,180,255,0.35);
+      transition:color 0.2s; padding:8px 0;
+    }
+    .nav-btn:hover { color:rgba(100,180,255,0.8); }
+
+    /* ── 第2屏：操作指南 ── */
+    #screen-guide { background:#03060f; }
+
+    .step-list { display:flex; flex-direction:column; margin-bottom:24px; }
+    .step-item {
+      display:flex; align-items:flex-start; gap:16px;
+      padding:16px 0;
+      border-bottom:1px solid rgba(100,180,255,0.06);
+    }
+    .step-item:first-child { border-top:1px solid rgba(100,180,255,0.06); }
+    .step-num {
+      font-size:26px; color:rgba(100,180,255,0.5);
+      line-height:1; flex-shrink:0; width:34px;
+    }
+    .step-content .stitle {
+      font-size:14px; letter-spacing:0.1em;
+      color:rgba(200,225,255,0.85);
+      font-family:'Noto Serif SC', serif; font-weight:200;
+      margin-bottom:5px;
+    }
+    .step-content .sdesc {
+      font-size:11px; line-height:1.75;
+      color:rgba(100,160,210,0.5); letter-spacing:0.04em;
+    }
+
+    /* Marker预览 */
+    .marker-wrap {
+      display:flex; align-items:center; gap:14px;
+      border:1px solid rgba(100,180,255,0.1);
+      padding:14px; margin:8px 0 24px;
+      background:rgba(100,180,255,0.02);
+    }
+    .marker-wrap img { width:64px; height:64px; flex-shrink:0; }
+    .marker-info .mlabel {
+      font-size:8px; letter-spacing:0.35em;
+      color:rgba(100,180,255,0.5); margin-bottom:5px;
+    }
+    .marker-info p {
+      font-size:11px; line-height:1.8;
+      color:rgba(100,160,210,0.5);
+    }
+
+    /* ── 第3屏：启动页（原版样式完整保留） ── */
+    #screen-start {
+      background:#03060f;
+      align-items:center; justify-content:center;
+    }
+
+    /* 背景同心圆 */
+    #screen-start .bg-rings {
+      position:absolute; inset:0;
+      display:flex; align-items:center; justify-content:center;
+      pointer-events:none;
+    }
+    .bg-ring {
+      position:absolute; border-radius:50%;
+      border:1px solid rgba(100,180,255,0.04);
+      animation:slow-spin linear infinite;
+    }
+    .bg-ring:nth-child(1){ width:120px; height:120px; animation-duration:20s; }
+    .bg-ring:nth-child(2){ width:220px; height:220px; border-color:rgba(100,180,255,0.06); animation-duration:35s; animation-direction:reverse; }
+    .bg-ring:nth-child(3){ width:340px; height:340px; animation-duration:55s; }
+    .bg-ring:nth-child(4){ width:460px; height:460px; border-color:rgba(100,180,255,0.03); animation-duration:80s; animation-direction:reverse; }
+    .bg-ring:nth-child(5){ width:580px; height:580px; animation-duration:110s; }
+    @keyframes slow-spin { to { transform:rotate(360deg); } }
+
+    /* 启动核心 */
+    .start-core {
+      position:relative; z-index:2;
+      display:flex; flex-direction:column; align-items:center;
+      gap:0;
+    }
+
+    /* 原版logo环 */
+    .splash-ring {
+      width:120px; height:120px;
+      border:1px solid rgba(100,180,255,0.15);
+      border-radius:50%; position:relative;
+      display:flex; align-items:center; justify-content:center;
+      margin-bottom:28px;
+    }
+    .splash-ring::before {
+      content:''; position:absolute; inset:6px;
+      border:1px solid rgba(100,180,255,0.25);
+      border-radius:50%;
+    }
+    .splash-ring::after {
+      content:''; position:absolute; inset:0;
+      border-top:2px solid rgba(100,180,255,0.7);
+      border-radius:50%;
+      animation:spin 2s linear infinite;
+    }
+    .splash-inner {
+      width:40px; height:40px;
+      border:1px solid rgba(100,180,255,0.4);
+      transform:rotate(45deg);
+    }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    .splash-title {
+      font-size:32px; font-weight:200;
+      letter-spacing:0.5em; text-indent:0.5em;
+      color:rgba(200,225,255,0.9);
+      font-family:'Noto Serif SC', serif;
+      margin-bottom:12px;
+    }
+    .splash-sub {
+      font-size:9px; letter-spacing:0.4em;
+      color:rgba(100,180,255,0.4);
+      text-align:center; line-height:2;
+      margin-bottom:36px;
+    }
+
+    #start-btn {
+      padding:14px 48px;
+      background:transparent;
+      border:1px solid rgba(100,180,255,0.4);
+      color:rgba(150,210,255,0.8);
+      font-size:10px; letter-spacing:0.5em;
+      cursor:pointer;
+      font-family:'Share Tech Mono', monospace;
+      transition:all 0.3s;
+      margin-bottom:16px;
+    }
+    #start-btn:hover {
+      background:rgba(100,180,255,0.08);
+      border-color:rgba(100,180,255,0.8);
+      color:rgba(200,230,255,1);
+    }
+    .cam-hint {
+      font-size:8px; letter-spacing:0.3em;
+      color:rgba(100,180,255,0.2);
+    }
+
+    /* 启动页底部导航点 */
+    #screen-start .dots-only {
+      position:absolute; top:22px; left:50%; transform:translateX(-50%);
+      display:flex; gap:8px; z-index:3;
+    }
+
+    /* 返回按钮 */
+    #screen-start .back-row {
+      position:absolute; bottom:0; left:0; right:0;
+    }
+
+    /* ════════════════════════════════════
+       AR场景层
+    ════════════════════════════════════ */
+    #ar-wrap {
+      position:fixed; inset:0; z-index:10;
+      display:none;
+    }
+    #ar-wrap.active { display:block; }
+
+    /* ── HUD覆盖层（原版完整保留） ── */
+    #hud {
+      position:fixed; inset:0;
+      pointer-events:none; z-index:50;
+      display:none;
+    }
+    #hud.active { display:block; }
+
+    .scan-frame {
+      position:absolute; top:50%; left:50%;
+      transform:translate(-50%,-55%);
+      width:260px; height:260px;
+    }
+    .scan-corner { position:absolute; width:24px; height:24px; }
+    .scan-corner.tl{ top:0;left:0; border-top:2px solid rgba(100,180,255,0.7); border-left:2px solid rgba(100,180,255,0.7); }
+    .scan-corner.tr{ top:0;right:0; border-top:2px solid rgba(100,180,255,0.7); border-right:2px solid rgba(100,180,255,0.7); }
+    .scan-corner.bl{ bottom:0;left:0; border-bottom:2px solid rgba(100,180,255,0.7); border-left:2px solid rgba(100,180,255,0.7); }
+    .scan-corner.br{ bottom:0;right:0; border-bottom:2px solid rgba(100,180,255,0.7); border-right:2px solid rgba(100,180,255,0.7); }
+    .scan-line {
+      position:absolute; left:10px; right:10px;
+      height:1px;
+      background:linear-gradient(90deg,transparent,rgba(100,180,255,0.6),transparent);
+      top:0; animation:scanMove 2.5s ease-in-out infinite;
+    }
+    @keyframes scanMove {
+      0%,100%{ top:10px; opacity:0; }
+      10%{ opacity:1; }
+      90%{ opacity:1; }
+      50%{ top:250px; }
+    }
+    .scan-label {
+      position:absolute; bottom:-28px; left:50%;
+      transform:translateX(-50%);
+      font-size:8px; letter-spacing:0.4em;
+      color:rgba(100,180,255,0.5); white-space:nowrap;
+    }
+
+    .hud-top {
+      position:absolute; top:24px; left:24px; right:24px;
+      display:flex; justify-content:space-between; align-items:flex-start;
+    }
+    .hud-title {
+      font-size:11px; letter-spacing:0.4em;
+      color:rgba(150,210,255,0.6);
+    }
+    .hud-title span {
+      display:block; font-size:20px; font-weight:200;
+      color:rgba(200,225,255,0.85); letter-spacing:0.2em;
+      font-family:'Noto Serif SC', serif; margin-top:4px;
+    }
+    .hud-status { text-align:right; }
+    .status-dot {
+      display:inline-block; width:6px; height:6px;
+      border-radius:50%; background:rgba(100,180,255,0.5);
+      margin-right:6px; animation:blink 1.5s ease-in-out infinite;
+    }
+    .status-dot.found { background:rgba(80,220,140,0.8); animation:none; }
+    @keyframes blink { 0%,100%{opacity:0.3} 50%{opacity:1} }
+    .status-text { font-size:8px; letter-spacing:0.3em; color:rgba(100,180,255,0.4); }
+
+    .hud-bottom {
+      position:absolute; bottom:24px; left:24px; right:24px;
+      display:flex; justify-content:space-between; align-items:flex-end;
+    }
+    .hud-info {
+      font-size:7.5px; letter-spacing:0.25em;
+      color:rgba(100,180,255,0.3); line-height:2;
+    }
+    .hud-tag {
+      font-size:7px; letter-spacing:0.3em;
+      color:rgba(100,180,255,0.3);
+      border:1px solid rgba(100,180,255,0.15);
+      padding:5px 12px;
+    }
+
+    /* 退出按钮 */
+    #exit-btn {
+      position:fixed; bottom:32px; right:24px;
+      z-index:60; pointer-events:all;
+      padding:10px 20px;
+      background:rgba(3,6,15,0.7);
+      border:1px solid rgba(100,180,255,0.25);
+      color:rgba(100,180,255,0.5);
+      font-family:'Share Tech Mono', monospace;
+      font-size:9px; letter-spacing:0.35em;
+      cursor:pointer; display:none;
+      transition:all 0.2s;
+    }
+    #exit-btn:hover { border-color:rgba(100,180,255,0.6); color:rgba(100,180,255,0.9); }
+    #exit-btn.active { display:block; }
+
+    /* 识别成功提示 */
+    #found-msg {
+      position:fixed; top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      font-size:11px; letter-spacing:0.5em;
+      color:rgba(80,220,140,0.9);
+      z-index:200; pointer-events:none;
+      opacity:0; transition:opacity 0.5s;
+    }
+
+    /* 滚动条 */
+    ::-webkit-scrollbar { width:2px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:rgba(100,180,255,0.2); border-radius:1px; }
+  </style>
+</head>
+<body>
+
+<!-- ════ 圆形进场动画 ════ -->
+<div id="circle-intro">
+  <div class="ci-ring"></div>
+  <div class="ci-ring"></div>
+  <div class="ci-ring"></div>
+  <div class="ci-dot"></div>
+</div>
+
+<!-- ════ 应用主容器 ════ -->
+<div id="app">
+
+  <!-- ── 第1屏：藻井介绍 ── -->
+  <div id="screen-intro" class="screen active">
+    <div class="nav-bar">
+      <div class="nav-logo">ZAOJING · AR</div>
+      <div class="nav-dots">
+        <div class="nav-dot active" onclick="goTo(0)"></div>
+        <div class="nav-dot" onclick="goTo(1)"></div>
+        <div class="nav-dot" onclick="goTo(2)"></div>
+      </div>
+      <div class="nav-page">01 / 03</div>
+    </div>
+
+    <!-- 配图：传到GitHub后替换文件名 -->
+    <img class="hero-img" src="./zaojing-photo.jpg" alt="隆福寺藻井"
+      onerror="this.style.display='none'"/>
+    <div class="hero-label">北京 · 隆福寺藻井 · 实物扫描 &nbsp;|&nbsp; LONGFU TEMPLE · BEIJING</div>
+
+    <div class="content-area">
+      <div class="tag">COFFERED CEILING · 中式建筑天花板艺术</div>
+      <div class="screen-title">藻 井</div>
+      <div class="screen-sub">ZAOJING · DIGITAL RECONSTRUCTION · 2024</div>
+      <div class="blue-rule"></div>
+
+      <p class="body-text">
+        藻井，是中国传统建筑天花板上一种向上凹进的穹窟式装饰。因形如水中井口、常绘水草莲花以镇火，故称"藻井"。其结构由多层叠涩圆框或八角方框层层收缩而成，象征天穹无垠，是古代建筑中等级最高的顶棚形式。
+      </p>
+      <p class="body-text">
+        隆福寺藻井现存于北京古代建筑博物馆，为明代遗物，国家一级文物。整体结构方井内含圆井，站在下面仰望，呈外圆内方的古钱币形状，顶部为唐代星象图，深蓝底色下绘有1400颗金色星宿。
+      </p>
+
+      <div class="data-grid">
+        <div class="data-cell">
+          <div class="lbl">DYNASTY / 朝代</div>
+          <div class="val">明</div>
+        </div>
+        <div class="data-cell">
+          <div class="lbl">LAYER COUNT / 层数</div>
+          <div class="val blue">04</div>
+        </div>
+        <div class="data-cell">
+          <div class="lbl">SYMMETRY / 对称</div>
+          <div class="val">径向 × 8</div>
+        </div>
+        <div class="data-cell">
+          <div class="lbl">STATUS / 文物级别</div>
+          <div class="val">国家一级</div>
+        </div>
+      </div>
+
+      <div class="note-block">
+        <div class="note-title">PROJECT NOTE · 项目说明</div>
+        <p>本项目以隆福寺藻井为研究对象，利用Blender进行三维数字重构，采用三渲二风格渲染——深蓝黑色调，强调同心圆环的几何秩序与中式建筑的轮廓美感。结合MindAR增强现实技术，将传统藻井以数字方式重构并呈现于现实空间之中。</p>
+      </div>
+
+      <div class="next-hint" onclick="goTo(1)">
+        <div class="hint-txt">NEXT · 操作指南</div>
+        <div class="arrow"></div>
+      </div>
+    </div>
+
+    <div class="nav-btn-row">
+      <button class="nav-btn" style="opacity:0.2" disabled>← PREV</button>
+      <button class="nav-btn" onclick="goTo(1)">NEXT →</button>
+    </div>
+  </div>
+
+  <!-- ── 第2屏：操作指南 ── -->
+  <div id="screen-guide" class="screen hidden">
+    <div class="nav-bar">
+      <div class="nav-logo">ZAOJING · AR</div>
+      <div class="nav-dots">
+        <div class="nav-dot" onclick="goTo(0)"></div>
+        <div class="nav-dot active" onclick="goTo(1)"></div>
+        <div class="nav-dot" onclick="goTo(2)"></div>
+      </div>
+      <div class="nav-page">02 / 03</div>
+    </div>
+
+    <div class="content-area">
+      <div class="tag">OPERATION GUIDE · 使用说明</div>
+      <div class="screen-title">操 作 指 南</div>
+      <div class="screen-sub">HOW TO EXPERIENCE AR</div>
+      <div class="blue-rule"></div>
+
+      <div class="step-list">
+        <div class="step-item">
+          <div class="step-num">01</div>
+          <div class="step-content">
+            <div class="stitle">准备识别图</div>
+            <div class="sdesc">打印或在屏幕上显示 Hiro 标记图，置于平整表面。建议尺寸不小于 8cm × 8cm，光线充足。</div>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">02</div>
+          <div class="step-content">
+            <div class="stitle">允许摄像头访问</div>
+            <div class="sdesc">点击"启动 AR 体验"后，浏览器将请求摄像头权限。请选择允许，AR 识别功能依赖摄像头运行。</div>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">03</div>
+          <div class="step-content">
+            <div class="stitle">对准识别图</div>
+            <div class="sdesc">将摄像头对准 Hiro 标记，使其完整出现在画面中，稍等片刻即可触发藻井模型显示。</div>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">04</div>
+          <div class="step-content">
+            <div class="stitle">调整角度欣赏</div>
+            <div class="sdesc">识别成功后，缓慢移动设备从不同角度观察藻井 3D 结构，模型会随识别图位置实时锁定。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tag" style="margin-bottom:10px;">HIRO MARKER · 识别图</div>
+      <div class="marker-wrap">
+        <img src="https://jeromeetienne.github.io/AR.js/data/images/HIRO.jpg" alt="Hiro marker"
+          onerror="this.style.display='none'"/>
+        <div class="marker-info">
+          <div class="mlabel">HIRO MARKER</div>
+          <p>AR识别图（Hiro标记）<br/>可截图打印或投屏显示<br/>建议在良好光线环境下使用</p>
+        </div>
+      </div>
+
+      <div class="next-hint" onclick="goTo(2)" style="padding:12px 0 0;">
+        <div class="hint-txt">READY · 前往启动</div>
+        <div class="arrow"></div>
+      </div>
+    </div>
+
+    <div class="nav-btn-row">
+      <button class="nav-btn" onclick="goTo(0)">← PREV</button>
+      <button class="nav-btn" onclick="goTo(2)">NEXT →</button>
+    </div>
+  </div>
+
+  <!-- ── 第3屏：启动页（原版完整还原） ── -->
+  <div id="screen-start" class="screen hidden">
+    <div class="bg-rings">
+      <div class="bg-ring"></div>
+      <div class="bg-ring"></div>
+      <div class="bg-ring"></div>
+      <div class="bg-ring"></div>
+      <div class="bg-ring"></div>
+    </div>
+
+    <div class="dots-only">
+      <div class="nav-dot" onclick="goTo(0)"></div>
+      <div class="nav-dot" onclick="goTo(1)"></div>
+      <div class="nav-dot active"></div>
+    </div>
+
+    <div class="start-core">
+      <div class="splash-ring">
+        <div class="splash-inner"></div>
+      </div>
+      <div class="splash-title">藻 井</div>
+      <div class="splash-sub">
+        ZAOJING · AR INTERACTIVE<br/>
+        DIGITAL MEDIA ART · 2024
+      </div>
+      <button id="start-btn" onclick="launchAR()">▶ &nbsp; 启动 AR 体验</button>
+      <div class="cam-hint">请允许摄像头访问权限</div>
+    </div>
+
+    <div class="back-row nav-btn-row">
+      <button class="nav-btn" onclick="goTo(1)">← PREV</button>
+      <button class="nav-btn" style="opacity:0.2" disabled></button>
+    </div>
+  </div>
+
+</div><!-- /#app -->
+
+<!-- ════ 识别成功提示 ════ -->
+<div id="found-msg">TARGET ACQUIRED</div>
+
+<!-- ════ HUD ════ -->
+<div id="hud">
+  <div class="hud-top">
+    <div class="hud-title">
+      AR MODE ACTIVE
+      <span>藻 井</span>
+    </div>
+    <div class="hud-status">
+      <div style="margin-bottom:4px">
+        <span class="status-dot" id="status-dot"></span>
+        <span class="status-text" id="status-text">SCANNING...</span>
+      </div>
+      <div class="status-text">MINDAR IMAGE TRACKING</div>
+    </div>
+  </div>
+
+  <div class="scan-frame" id="scan-frame">
+    <div class="scan-corner tl"></div>
+    <div class="scan-corner tr"></div>
+    <div class="scan-corner bl"></div>
+    <div class="scan-corner br"></div>
+    <div class="scan-line"></div>
+    <div class="scan-label">将识别图置于框内</div>
+  </div>
+
+  <div class="hud-bottom">
+    <div class="hud-info">
+      <div>LAYER COUNT / 04</div>
+      <div>SYMMETRY / RADIAL × 8</div>
+      <div>DYNASTY / MING</div>
+    </div>
+    <div class="hud-tag">COFFERED CEILING</div>
+  </div>
+</div>
+
+<!-- 退出AR按钮 -->
+<button id="exit-btn" onclick="exitAR()">EXIT AR</button>
+
+<!-- ════ AR场景（点击启动后动态注入）════ -->
+<div id="ar-wrap"></div>
+
+<script>
+/* ── 屏幕切换 ── */
+const SCREENS = ['screen-intro','screen-guide','screen-start'];
+let curScreen = 0;
+
+function goTo(idx) {
+  const prev = document.getElementById(SCREENS[curScreen]);
+  const next = document.getElementById(SCREENS[idx]);
+  const fwd  = idx > curScreen;
+
+  prev.classList.remove('active');
+  prev.classList.add(fwd ? 'hidden-back' : 'hidden');
+
+  next.classList.remove('hidden','hidden-back');
+  next.classList.add('active');
+  next.scrollTop = 0;
+
+  curScreen = idx;
+}
+
+/* ── 进场动画 ── */
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    document.getElementById('app').classList.add('visible');
+    const ci = document.getElementById('circle-intro');
+    ci.style.transition = 'opacity 0.5s';
+    ci.style.opacity = '0';
+    setTimeout(() => ci.style.display = 'none', 600);
+  }, 2100);
+});
+
+/* ── 启动AR ── */
+let arStarted = false;
+
+function launchAR() {
+  if (arStarted) return;
+  arStarted = true;
+
+  // 隐藏前置内容
+  document.getElementById('app').style.display = 'none';
+
+  // 动态注入a-scene（延迟注入避免页面加载时就触发摄像头请求）
+  const wrap = document.getElementById('ar-wrap');
+  wrap.classList.add('active');
+  wrap.innerHTML = `
+    <a-scene
+      id="ar-scene"
+      mindar-image="imageTargetSrc: https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/examples/assets/card-example/targets.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no;"
+      color-space="sRGB"
+      renderer="colorManagement: true"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: false"
+    >
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <a-entity mindar-image-target="targetIndex: 0">
+        <a-entity id="zaojing-root" position="0 0 0.1" rotation="-90 0 0" scale="0 0 0">
+
+          <!-- 层1 最外圈 -->
+          <a-torus position="0 0 0" radius="0.35" radius-tubular="0.015"
+            material="color:#4a90d9; emissive:#1a3a8a; emissiveIntensity:0.6; metalness:0.8; roughness:0.2"
+            animation="property:rotation; to:0 0 360; loop:true; dur:12000; easing:linear">
+          </a-torus>
+          <a-entity>
+            <a-sphere position="0.35 0 0"    radius="0.008" material="color:#8fc8ff; emissive:#4a90ff; emissiveIntensity:1"></a-sphere>
+            <a-sphere position="-0.35 0 0"   radius="0.008" material="color:#8fc8ff; emissive:#4a90ff; emissiveIntensity:1"></a-sphere>
+            <a-sphere position="0 0.35 0"    radius="0.008" material="color:#8fc8ff; emissive:#4a90ff; emissiveIntensity:1"></a-sphere>
+            <a-sphere position="0 -0.35 0"   radius="0.008" material="color:#8fc8ff; emissive:#4a90ff; emissiveIntensity:1"></a-sphere>
+            <a-sphere position="0.247 0.247 0"   radius="0.006" material="color:#8fc8ff; emissive:#4a90ff; emissiveIntensity:1"></a-sphere>
+            <a-sphere position="-0.247 0.247 0"  radius="0.006" material="color:#8fc8ff; emissive:#4a90ff; emissiveIntensity:1"></a-sphere>
+            <a-sphere position="0.247 -0.247 0"  radius="0.006" material="color:#8fc8ff; emissive:#4a90ff; emissiveIntensity:1"></a-sphere>
+            <a-sphere position="-0.247 -0.247 0" radius="0.006" material="color:#8fc8ff; emissive:#4a90ff; emissiveIntensity:1"></a-sphere>
+          </a-entity>
+
+          <!-- 层2 -->
+          <a-torus position="0 0 0.04" radius="0.26" radius-tubular="0.012"
+            material="color:#2a70c9; emissive:#0a2a7a; emissiveIntensity:0.5; metalness:0.8; roughness:0.2"
+            animation="property:rotation; to:0 0 -360; loop:true; dur:9000; easing:linear">
+          </a-torus>
+
+          <!-- 层3 -->
+          <a-torus position="0 0 0.08" radius="0.18" radius-tubular="0.01"
+            material="color:#1a60b9; emissive:#0a1a6a; emissiveIntensity:0.5; metalness:0.8; roughness:0.2"
+            animation="property:rotation; to:0 0 360; loop:true; dur:7000; easing:linear">
+          </a-torus>
+
+          <!-- 层4 最内 -->
+          <a-torus position="0 0 0.12" radius="0.10" radius-tubular="0.008"
+            material="color:#6ab0ef; emissive:#3a80df; emissiveIntensity:0.8; metalness:0.9; roughness:0.1"
+            animation="property:rotation; to:0 0 -360; loop:true; dur:5000; easing:linear">
+          </a-torus>
+
+          <!-- 中心方格 -->
+          <a-box position="0 0 0.15" width="0.08" height="0.08" depth="0.008"
+            material="color:#c0e0ff; emissive:#6ab0ff; emissiveIntensity:0.9; metalness:1; roughness:0.0"
+            animation="property:rotation; to:0 0 360; loop:true; dur:8000; easing:linear">
+          </a-box>
+
+          <!-- 十字连接梁 -->
+          <a-box position="0 0 0.06" width="0.7" height="0.008" depth="0.008"
+            material="color:#1a3a6e; emissive:#0a1a4e; emissiveIntensity:0.3; metalness:0.7; roughness:0.3">
+          </a-box>
+          <a-box position="0 0 0.06" width="0.008" height="0.7" depth="0.008"
+            material="color:#1a3a6e; emissive:#0a1a4e; emissiveIntensity:0.3; metalness:0.7; roughness:0.3">
+          </a-box>
+
+          <!-- 中心光点 -->
+          <a-sphere position="0 0 0.18" radius="0.018"
+            material="color:white; emissive:#8fd0ff; emissiveIntensity:2; metalness:1; roughness:0">
+            <a-animation attribute="material.emissiveIntensity" from="1" to="3" dir="alternate" loop="true" dur="1500"></a-animation>
+          </a-sphere>
+
+          <!-- 灯光 -->
+          <a-light type="point" position="0 0 0.3" color="#4a90ff" intensity="1.5" distance="2"></a-light>
+          <a-light type="ambient" color="#1a3a6e" intensity="0.8"></a-light>
+        </a-entity>
+      </a-entity>
+    </a-scene>
+  `;
+
+  // 显示HUD和退出按钮
+  document.getElementById('hud').classList.add('active');
+  document.getElementById('exit-btn').classList.add('active');
+
+  // 等场景加载后绑定识别事件
+  const checkScene = setInterval(() => {
+    const scene = document.getElementById('ar-scene');
+    if (!scene) return;
+    scene.addEventListener('loaded', () => {
+      clearInterval(checkScene);
+      const target = document.querySelector('[mindar-image-target]');
+      if (!target) return;
+
+      target.addEventListener('targetFound', () => {
+        document.getElementById('status-dot').classList.add('found');
+        document.getElementById('status-text').textContent = 'TARGET FOUND';
+        document.getElementById('scan-frame').style.display = 'none';
+
+        const msg = document.getElementById('found-msg');
+        msg.style.opacity = '1';
+        setTimeout(() => { msg.style.opacity = '0'; }, 2000);
+
+        const root = document.getElementById('zaojing-root');
+        root.setAttribute('animation__scale', {
+          property:'scale', to:'1 1 1', dur:800, easing:'easeOutElastic'
+        });
+      });
+
+      target.addEventListener('targetLost', () => {
+        document.getElementById('status-dot').classList.remove('found');
+        document.getElementById('status-text').textContent = 'SCANNING...';
+        document.getElementById('scan-frame').style.display = 'block';
+
+        const root = document.getElementById('zaojing-root');
+        root.setAttribute('animation__scale', {
+          property:'scale', to:'0 0 0', dur:400, easing:'easeInQuad'
+        });
+      });
+    });
+  }, 200);
+}
+
+/* ── 退出AR ── */
+function exitAR() {
+  const wrap = document.getElementById('ar-wrap');
+  const scene = document.getElementById('ar-scene');
+
+  if (scene) {
+    try {
+      const sys = scene.systems['mindar-image-system'];
+      if (sys) sys.stop();
+    } catch(e) {}
+  }
+
+  wrap.innerHTML = '';
+  wrap.classList.remove('active');
+  document.getElementById('hud').classList.remove('active');
+  document.getElementById('exit-btn').classList.remove('active');
+
+  arStarted = false;
+  const app = document.getElementById('app');
+  app.style.display = '';
+  goTo(2);
+}
+</script>
+</body>
+</html>
