@@ -744,19 +744,24 @@ function loadGLBInBackground() {
   const loader = new LoaderClass();
 
   // GLB 使用了 Draco 压缩，需要 DRACOLoader
-  // 使用 jsdelivr CDN 的 DRACO 解码器（无需下载文件）
-  if (THREE.DRACOLoader) {
-    const dracoLoader = new THREE.DRACOLoader();
-    // 使用 jsdelivr CDN 提供的解码器
-    dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.147.0/examples/jsm/libs/draco/');
-    dracoLoader.setDecoderConfig({ type: 'js' }); // 使用 JS 版本而不是 WASM
-    loader.setDRACOLoader(dracoLoader);
-    console.log('DRACOLoader set with jsdelivr CDN');
+  // 动态加载 DRACOLoader
+  const dracoScript = document.createElement('script');
+  dracoScript.src = 'https://cdn.jsdelivr.net/npm/three@0.147.5/examples/js/loaders/DRACOLoader.js';
+  dracoScript.onload = () => {
+    const DRACOLoader = THREE.DRACOLoader;
+    if (DRACOLoader) {
+      const dracoLoader = new DRACOLoader();
+      dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+      loader.setDRACOLoader(dracoLoader);
+      console.log('DRACOLoader set');
+    }
     doLoad();
-  } else {
-    console.warn('DRACOLoader not available, trying without');
+  };
+  dracoScript.onerror = () => {
+    console.warn('DRACOLoader script failed, trying without');
     doLoad();
-  }
+  };
+  document.head.appendChild(dracoScript);
 
   function doLoad() {
     loader.load('./zaojing.glb',
