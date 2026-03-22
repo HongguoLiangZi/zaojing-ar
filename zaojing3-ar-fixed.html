@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>枢 · AXIS</title>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            overflow: hidden;
+            background: #000;
+        }
+
+        /* 星空背景 */
+        #stars-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(ellipse at bottom, #1B2735 0%, #090A0F 100%);
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        .star {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: white;
+            border-radius: 50%;
+            opacity: 0;
+            animation: twinkle 3s infinite;
+        }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 1; }
+        }
+
+        /* 加载界面 */
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease-out;
+        }
+
+        #loading-screen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loading-content {
+            text-align: center;
+            color: white;
+            z-index: 2;
+        }
+
+        .loading-percentage {
+            font-size: 48px;
+            font-weight: 300;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+
+        .loading-text {
+            font-size: 14px;
+            letter-spacing: 8px;
+            text-transform: uppercase;
+            opacity: 0.7;
+        }
+
+        .loading-bar-container {
+            width: 300px;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 20px auto;
+            overflow: hidden;
+        }
+
+        .loading-bar {
+            height: 100%;
+            background: white;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        /* AR 场景 */
+        #ar-scene {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <!-- 星空背景 -->
+    <div id="stars-container"></div>
+
+    <!-- 加载界面 -->
+    <div id="loading-screen">
+        <div class="loading-content">
+            <div class="loading-percentage" id="loading-percentage">0%</div>
+            <div class="loading-text" id="loading-text">LOADING MODEL</div>
+            <div class="loading-bar-container">
+                <div class="loading-bar" id="loading-bar"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AR 场景 -->
+    <a-scene
+        id="ar-scene"
+        mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiLoading: no; uiError: no; uiScanning: no;"
+        color-space="sRGB"
+        renderer="colorManagement: true; physicallyCorrectLights: true;"
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false">
+        
+        <a-assets>
+            <a-asset-item id="zaojing-model" src="./藻井整合.glb"></a-asset-item>
+        </a-assets>
+
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+        <a-entity mindar-image-target="targetIndex: 0">
+            <a-gltf-model 
+                id="model"
+                rotation="0 0 0" 
+                position="0 0 0" 
+                scale="1 1 1"
+                animation-mixer>
+            </a-gltf-model>
+        </a-entity>
+    </a-scene>
+
+    <script>
+        // ============================================
+        // 星空效果
+        // ============================================
+        function createStars() {
+            const container = document.getElementById('stars-container');
+            const starCount = 200;
+
+            for (let i = 0; i < starCount; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                star.style.left = Math.random() * 100 + '%';
+                star.style.top = Math.random() * 100 + '%';
+                star.style.animationDelay = Math.random() * 3 + 's';
+                container.appendChild(star);
+            }
+        }
+
+        createStars();
+
+        // ============================================
+        // GLB 模型预加载（修复版 - 不使用 DRACO）
+        // ============================================
+        let modelLoaded = false;
+        const loadingScreen = document.getElementById('loading-screen');
+        const loadingPercentage = document.getElementById('loading-percentage');
+        const loadingBar = document.getElementById('loading-bar');
+        const loadingText = document.getElementById('loading-text');
+
+        function updateLoadingProgress(percentage) {
+            loadingPercentage.textContent = percentage + '%';
+            loadingBar.style.width = percentage + '%';
+        }
+
+        // 使用 THREE.js GLTFLoader（不需要 DRACO）
+        async function preloadGLB() {
+            console.log('Pre-loading GLB...');
+            updateLoadingProgress(10);
+
+            try {
+                // 等待 A-Frame 加载完成
+                await new Promise(resolve => {
+                    if (window.AFRAME && window.AFRAME.THREE) {
+                        resolve();
+                    } else {
+                        document.addEventListener('DOMContentLoaded', resolve);
+                    }
+                });
+
+                updateLoadingProgress(30);
+
+                const THREE = window.AFRAME.THREE;
+                const loader = new THREE.GLTFLoader();
+                
+                updateLoadingProgress(50);
+                loadingText.textContent = 'LOADING MODEL';
+
+                // 直接加载 GLB（不使用 DRACO）
+                const gltf = await new Promise((resolve, reject) => {
+                    loader.load(
+                        './藻井整合.glb',
+                        (gltf) => {
+                            console.log('GLB loaded successfully!');
+                            resolve(gltf);
+                        },
+                        (progress) => {
+                            if (progress.lengthComputable) {
+                                const percent = Math.round((progress.loaded / progress.total) * 40) + 50;
+                                updateLoadingProgress(percent);
+                            }
+                        },
+                        (error) => {
+                            console.error('GLB loading error:', error);
+                            reject(error);
+                        }
+                    );
+                });
+
+                updateLoadingProgress(95);
+
+                // 将模型应用到 A-Frame 实体
+                const modelEntity = document.querySelector('#model');
+                if (modelEntity) {
+                    modelEntity.setObject3D('mesh', gltf.scene);
+                    console.log('Model set to entity');
+                }
+
+                modelLoaded = true;
+                updateLoadingProgress(100);
+                loadingText.textContent = 'COMPLETE';
+
+                // 延迟隐藏加载界面
+                setTimeout(() => {
+                    loadingScreen.classList.add('hidden');
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                    }, 500);
+                }, 500);
+
+            } catch (error) {
+                console.error('Model preload failed:', error);
+                loadingText.textContent = 'LOADING FAILED';
+                updateLoadingProgress(0);
+            }
+        }
+
+        // ============================================
+        // AR 场景初始化
+        // ============================================
+        const sceneEl = document.querySelector('a-scene');
+
+        sceneEl.addEventListener('loaded', () => {
+            console.log('A-Frame scene loaded');
+            preloadGLB();
+        });
+
+        // AR 就绪后启动
+        document.addEventListener('DOMContentLoaded', () => {
+            const sceneEl = document.querySelector('a-scene');
+            
+            if (sceneEl.hasLoaded) {
+                setTimeout(() => {
+                    const arSystem = sceneEl.systems['mindar-image-system'];
+                    if (arSystem) {
+                        arSystem.start();
+                        console.log('AR started');
+                    }
+                }, 1000);
+            } else {
+                sceneEl.addEventListener('loaded', () => {
+                    setTimeout(() => {
+                        const arSystem = sceneEl.systems['mindar-image-system'];
+                        if (arSystem) {
+                            arSystem.start();
+                            console.log('AR started');
+                        }
+                    }, 1000);
+                });
+            }
+        });
+
+        // 目标检测事件
+        const target = document.querySelector('[mindar-image-target]');
+        
+        target.addEventListener('targetFound', () => {
+            console.log('Target found!');
+        });
+
+        target.addEventListener('targetLost', () => {
+            console.log('Target lost');
+        });
+    </script>
+</body>
+</html>
