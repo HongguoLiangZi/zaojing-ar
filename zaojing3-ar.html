@@ -884,42 +884,92 @@ function initTouchRotation(canvas) {
 /* ════════════════════════════════════
    TEST MODE（无需识别图）
 ════════════════════════════════════ */
+/* ── 调试覆盖层 ── */
+function dbg(msg, color='#00ff88') {
+  let el = document.getElementById('debug-overlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'debug-overlay';
+    el.style.cssText = `
+      position:fixed;top:60px;left:12px;right:12px;z-index:9999;
+      pointer-events:none;font-family:monospace;font-size:11px;
+      line-height:1.6;
+    `;
+    document.body.appendChild(el);
+  }
+  const ts = new Date().toISOString().substr(11,8);
+  const line = document.createElement('div');
+  line.style.cssText = `color:${color};text-shadow:0 0 6px ${color};`;
+  line.textContent = `[${ts}] ${msg}`;
+  el.appendChild(line);
+  // 只保留最近20条
+  while (el.children.length > 20) el.removeChild(el.firstChild);
+}
+
 async function launchTest() {
   if (arStarted) return;
   arStarted = true;
   isTestMode = true;
+
+  dbg('▶ TEST MODE 启动', '#00aaff');
   document.getElementById('app').style.display = 'none';
 
-  // 1. 先让 wrap 和 canvas 可见（WebGL 必须在可见 canvas 上才能初始化）
+  // 1. wrap + canvas 先可见
   const wrap = document.getElementById('ar-wrap');
   wrap.classList.add('active');
   wrap.innerHTML = '<div style="position:absolute;inset:0;background:#03060f;"></div>';
+  dbg('① ar-wrap 激活');
 
   const canvas = document.getElementById('particle-canvas');
   canvas.classList.add('active');
   canvas.style.pointerEvents = 'auto';
+  dbg(`② canvas 激活 size:${canvas.width}x${canvas.height} visible:${canvas.offsetWidth>0}`);
 
-  // 2. HUD 先显示 loading 状态
+  // 2. HUD
   document.getElementById('hud').classList.add('active');
   document.getElementById('exit-btn').classList.add('active');
   document.getElementById('status-dot').classList.add('found');
   document.getElementById('status-text').textContent = 'INITIALIZING...';
+  dbg('③ HUD 激活');
 
-  // 3. 等一帧让 DOM 完成渲染
+  // 3. 等一帧
   await new Promise(r => requestAnimationFrame(r));
+  dbg(`④ RAF 完成 canvas:${canvas.offsetWidth}x${canvas.offsetHeight}`);
 
-  // 4. 初始化粒子（canvas 已可见，WebGL 可以正常工作）
-  await initParticles();
+  // 4. 初始化粒子
+  dbg('⑤ initParticles 开始...');
+  try {
+    await initParticles();
+    dbg(`⑥ initParticles 完成 pMesh:${!!pMesh} pScene:${!!pScene}`, '#00ff88');
+  } catch(e) {
+    dbg('⑥ initParticles 失败: ' + e.message, '#ff4444');
+    return;
+  }
 
-  // 5. 启动渲染循环
+  // 5. 渲染循环
   initTouchRotation(canvas);
   pLastTime = performance.now();
   pAnimId = requestAnimationFrame(animParticles);
+  dbg(`⑦ 渲染循环启动 pState:${pState}`);
 
   document.getElementById('status-text').textContent = 'TEST MODE';
 
-  // 6. 触发聚合
-  setTimeout(() => startAssembling(), 300);
+  // 6. 聚合
+  setTimeout(() => {
+    startAssembling();
+    dbg(`⑧ startAssembling pState:${pState}`, '#ffcc00');
+  }, 300);
+
+  // 7. 1秒后报告粒子状态
+  setTimeout(() => {
+    if (pMesh) {
+      const op = pMesh.material.opacity;
+      dbg(`⑨ 粒子 opacity:${op.toFixed(2)} state:${pState} progress:${pProgress.toFixed(2)}`,
+          op > 0 ? '#00ff88' : '#ff8800');
+    } else {
+      dbg('⑨ pMesh 不存在！', '#ff4444');
+    }
+  }, 1000);
 }
 
 /* ════════════════════════════════════
