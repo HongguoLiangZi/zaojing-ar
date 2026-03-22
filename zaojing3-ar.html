@@ -300,48 +300,79 @@
     ::-webkit-scrollbar-track{background:transparent;}
     ::-webkit-scrollbar-thumb{background:rgba(100,180,255,0.2);border-radius:1px;}
 
-  /* ── 加载画面 ── */
-  #loading-screen {
-    position:fixed;inset:0;z-index:8000;
+
+  /* ── 底部 GLB 进度条 ── */
+  #glb-progress-bar {
+    position:fixed;
+    bottom:0;left:0;right:0;
+    height:2px;
+    background:rgba(100,150,255,0.1);
+    z-index:9999;
+    pointer-events:none;
+    opacity:0;
+    transition:opacity 0.3s;
+  }
+  #glb-progress-bar.active { opacity:1; }
+  #glb-progress-fill {
+    height:100%;
+    width:0%;
+    background:linear-gradient(90deg, rgba(100,180,255,0.5), rgba(200,230,255,0.9));
+    transition:width 0.4s ease;
+    box-shadow:0 0 8px rgba(150,200,255,0.6);
+  }
+  #glb-status {
+    position:fixed;
+    bottom:6px;right:16px;
+    font-family:'Share Tech Mono',monospace;
+    font-size:7px;letter-spacing:0.3em;
+    color:rgba(100,160,255,0.45);
+    z-index:9999;pointer-events:none;
+    opacity:0;transition:opacity 0.3s;
+  }
+  #glb-status.active { opacity:1; }
+
+  /* ── AR加载中遮罩（GLB未就绪时） ── */
+  #ar-loading-overlay {
+    position:fixed;inset:0;
+    z-index:200;
     background:#03060f;
     display:flex;flex-direction:column;
     align-items:center;justify-content:center;
-    transition:opacity 0.8s ease;
     pointer-events:none;
+    opacity:0;transition:opacity 0.5s;
   }
-  #loading-screen.hidden { opacity:0; }
-  #loading-canvas {
-    position:absolute;inset:0;
-    width:100%;height:100%;
+  #ar-loading-overlay.active { opacity:1; pointer-events:auto; }
+  #ar-loading-canvas {
+    position:absolute;inset:0;width:100%;height:100%;
   }
-  .loading-text {
+  .alo-text {
     position:relative;z-index:1;
     font-family:'Share Tech Mono',monospace;
-    font-size:11px;letter-spacing:0.45em;
-    color:rgba(200,220,255,0.5);
-    margin-top:0;
-    animation:blink 1.4s ease-in-out infinite;
+    font-size:10px;letter-spacing:0.5em;
+    color:rgba(180,210,255,0.6);
+    animation:blink 1.6s ease-in-out infinite;
   }
-  .loading-sub {
+  .alo-pct {
     position:relative;z-index:1;
     font-family:'Share Tech Mono',monospace;
-    font-size:8px;letter-spacing:0.35em;
-    color:rgba(100,150,255,0.3);
-    margin-top:10px;
+    font-size:22px;letter-spacing:0.1em;
+    color:rgba(200,225,255,0.8);
+    margin-bottom:8px;
+    font-weight:200;
   }
-  .loading-bar-wrap {
+  .alo-bar-wrap {
     position:relative;z-index:1;
-    width:120px;height:1px;
+    width:160px;height:1px;
     background:rgba(100,150,255,0.15);
-    margin-top:18px;overflow:hidden;
+    margin-top:16px;overflow:hidden;
   }
-  .loading-bar {
-    height:100%;background:rgba(200,220,255,0.6);
-    width:0%;transition:width 0.3s ease;
+  .alo-bar {
+    height:100%;
+    background:linear-gradient(90deg,rgba(100,180,255,0.6),rgba(220,240,255,0.9));
+    width:0%;transition:width 0.4s ease;
+    box-shadow:0 0 6px rgba(150,200,255,0.5);
   }
-  @keyframes blink {
-    0%,100%{opacity:0.5} 50%{opacity:1}
-  }
+  @keyframes blink {0%,100%{opacity:0.4}50%{opacity:1}}
 
   </style>
 </head>
@@ -353,14 +384,6 @@
   <div class="ci-ring"></div>
   <div class="ci-ring"></div>
   <div class="ci-dot"></div>
-</div>
-
-<!-- 加载画面 -->
-<div id="loading-screen">
-  <canvas id="loading-canvas"></canvas>
-  <div class="loading-text">LOADING</div>
-  <div class="loading-bar-wrap"><div class="loading-bar" id="loading-bar"></div></div>
-  <div class="loading-sub" id="loading-sub">INITIALIZING</div>
 </div>
 
 <!-- ════ 三屏前置内容 ════ -->
@@ -605,115 +628,21 @@ function goTo(idx){
 
 /* ── 进场动画 ── */
 window.addEventListener('DOMContentLoaded', ()=>{
-  startLoadingParticles();
+  // 立刻开始预加载 GLB（不等用户操作）
+  setTimeout(() => {
+    console.log('Pre-loading GLB...');
+    setGLBProgress(0);
+    loadGLBInBackground();
+  }, 800);  // 等页面渲染完再开始
+
   setTimeout(()=>{
     document.getElementById('app').classList.add('visible');
-    if (window.__stopLoadingParticles) window.__stopLoadingParticles();
     const ci = document.getElementById('circle-intro');
     ci.style.transition = 'opacity 0.5s';
     ci.style.opacity = '0';
     setTimeout(()=> ci.style.display='none', 600);
   }, 2100);
 });
-
-/* ════════════════════════════════════
-   加载画面粒子系统（轻量，不依赖THREE）
-════════════════════════════════════ */
-function startLoadingParticles() {
-  const canvas = document.getElementById('loading-canvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  let W, H;
-  const particles = [];
-  const N = 180;
-
-  function resize() {
-    W = canvas.width  = window.innerWidth;
-    H = canvas.height = window.innerHeight;
-  }
-  resize();
-  window.addEventListener('resize', resize);
-
-  // 初始化粒子
-  for (let i = 0; i < N; i++) {
-    particles.push({
-      x: Math.random() * W,
-      y: Math.random() * H,
-      vx: (Math.random()-0.5) * 0.4,
-      vy: (Math.random()-0.5) * 0.4,
-      r: Math.random() * 1.2 + 0.3,
-      a: Math.random(),
-      // 每个粒子有一个相位，产生流动感
-      phase: Math.random() * Math.PI * 2,
-      speed: 0.3 + Math.random() * 0.5,
-    });
-  }
-
-  let frame = 0;
-  let animId = null;
-
-  function drawLoading() {
-    animId = requestAnimationFrame(drawLoading);
-    ctx.clearRect(0, 0, W, H);
-
-    const t = frame * 0.008;
-    frame++;
-
-    for (const p of particles) {
-      // 流动：用 sin/cos 产生有机运动
-      p.x += p.vx + Math.sin(t + p.phase) * 0.3;
-      p.y += p.vy + Math.cos(t * 0.7 + p.phase) * 0.25;
-      p.a = 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(t * p.speed + p.phase));
-
-      // 边界回绕
-      if (p.x < 0) p.x += W;
-      if (p.x > W) p.x -= W;
-      if (p.y < 0) p.y += H;
-      if (p.y > H) p.y -= H;
-
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(180, 210, 255, ${p.a.toFixed(2)})`;
-      ctx.fill();
-    }
-
-    // 细连线（近距离粒子之间）
-    ctx.strokeStyle = 'rgba(150,190,255,0.04)';
-    ctx.lineWidth = 0.5;
-    for (let i = 0; i < particles.length; i++) {
-      for (let j = i+1; j < particles.length; j++) {
-        const dx = particles[i].x - particles[j].x;
-        const dy = particles[i].y - particles[j].y;
-        const d = dx*dx + dy*dy;
-        if (d < 8000) {
-          ctx.beginPath();
-          ctx.moveTo(particles[i].x, particles[i].y);
-          ctx.lineTo(particles[j].x, particles[j].y);
-          ctx.stroke();
-        }
-      }
-    }
-  }
-
-  drawLoading();
-
-  // 暴露停止函数
-  window.__stopLoadingParticles = () => {
-    if (animId) cancelAnimationFrame(animId);
-    const el = document.getElementById('loading-screen');
-    if (el) {
-      el.classList.add('hidden');
-      setTimeout(() => el.style.display='none', 900);
-    }
-  };
-}
-
-function updateLoadingProgress(pct, text) {
-  const bar = document.getElementById('loading-bar');
-  const sub = document.getElementById('loading-sub');
-  if (bar) bar.style.width = pct + '%';
-  if (sub) sub.textContent = text || '';
-}
 
 /* ════════════════════════════════════
    Three.js 粒子藻井系统
@@ -733,6 +662,71 @@ const PCOUNT = 2500;
 ════════════════════════════════════ */
 let glbLoaded = false;
 let glbModel  = null;  // 实体模型引用（A-Frame entity）
+
+/* ── 进度条控制 ── */
+function setGLBProgress(pct, done) {
+  const fill   = document.getElementById('glb-progress-fill');
+  const status = document.getElementById('glb-status');
+  const bar    = document.getElementById('glb-progress-bar');
+  const aloPct = document.getElementById('alo-pct');
+  const aloBar = document.getElementById('alo-bar');
+  if (fill)   fill.style.width = pct + '%';
+  if (aloPct) aloPct.textContent = Math.round(pct) + '%';
+  if (aloBar) aloBar.style.width = pct + '%';
+  if (done) {
+    if (bar)    bar.classList.remove('active');
+    if (status) status.classList.remove('active');
+    hideARLoadingOverlay();
+  } else {
+    if (bar)    bar.classList.add('active');
+    if (status) { status.classList.add('active'); status.textContent = 'MODEL ' + Math.round(pct) + '%'; }
+  }
+}
+
+/* ── AR 内部加载遮罩 ── */
+let aloAnimId = null;
+function showARLoadingOverlay() {
+  const el = document.getElementById('ar-loading-overlay');
+  if (!el || el.classList.contains('active')) return;
+  el.classList.add('active');
+  const canvas = document.getElementById('ar-loading-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const W = canvas.width, H = canvas.height;
+  const pts = Array.from({length:120}, () => ({
+    x:Math.random()*W, y:Math.random()*H,
+    vx:(Math.random()-.5)*.5, vy:(Math.random()-.5)*.5,
+    r:Math.random()*1.2+.3,
+    phase:Math.random()*Math.PI*2,
+    sp:.4+Math.random()*.5
+  }));
+  let f = 0;
+  function draw() {
+    aloAnimId = requestAnimationFrame(draw);
+    ctx.clearRect(0,0,W,H);
+    const t = f++ * .009;
+    for (const p of pts) {
+      p.x += p.vx + Math.sin(t+p.phase)*.35;
+      p.y += p.vy + Math.cos(t*.7+p.phase)*.28;
+      if(p.x<0)p.x+=W; if(p.x>W)p.x-=W;
+      if(p.y<0)p.y+=H; if(p.y>H)p.y-=H;
+      const a = .25+.45*(.5+.5*Math.sin(t*p.sp+p.phase));
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle = `rgba(170,205,255,${a.toFixed(2)})`;
+      ctx.fill();
+    }
+  }
+  draw();
+}
+
+function hideARLoadingOverlay() {
+  const el = document.getElementById('ar-loading-overlay');
+  if (el) el.classList.remove('active');
+  if (aloAnimId) { cancelAnimationFrame(aloAnimId); aloAnimId = null; }
+}
 
 // 在后台异步加载GLB，用 A-Frame 内置的 THREE.GLTFLoader
 function loadGLBInBackground() {
@@ -755,10 +749,8 @@ function loadGLBInBackground() {
     (prog) => {
       if(prog.total>0) {
         const pct = Math.round(prog.loaded/prog.total*100);
-        if(pct % 25 === 0) {
-          console.log('GLB progress:', pct+'%');
-          if (window.dbg) dbg('GLB 加载中 ' + pct + '%', '#4488ff');
-        }
+        setGLBProgress(pct);
+        if(pct % 25 === 0) console.log('GLB:', pct+'%');
       }
     },
     (err) => { console.warn('GLTFLoader failed:', err.message); loadGLBViaFetch(); }
@@ -845,12 +837,13 @@ function applyGLBPoints(allVerts) {
   const cx=(minX+maxX)/2, cy=(minY+maxY)/2, cz=(minZ+maxZ)/2;
   const sc = Math.max(maxX-minX, maxY-minY, maxZ-minZ) / 2;
   const normalized = allVerts.map(([x,y,z]) => [
-    (x-cx)/sc*0.35, (y-cy)/sc*0.35, (z-cz)/sc*0.35
+    (x-cx)/sc*0.55, (y-cy)/sc*0.55, (z-cz)/sc*0.55
   ]);
 
   glbLoaded = true;
   console.log('GLB applied:', normalized.length, 'points');
-  if (window.dbg) dbg('GLB 加载完成 ' + normalized.length + ' 顶点', '#00ff88');
+  setGLBProgress(100, true);
+  if (window.dbg) dbg('GLB 完成 ' + normalized.length + ' 顶点', '#00ff88');
 
   // 更新粒子目标形状
   if (pMesh) {
@@ -894,11 +887,11 @@ function buildTargetPositions(glbPoints) {
   } else {
     // ── Fallback：同心圆环几何 ──
     const rings = [
-      {r:0.06, n:30,  h:0.10, bri:1.0},
-      {r:0.12, n:60,  h:0.06, bri:0.9},
-      {r:0.19, n:100, h:0.02, bri:0.8},
-      {r:0.26, n:140, h:-0.03,bri:0.7},
-      {r:0.34, n:180, h:-0.08,bri:0.6},
+      {r:0.08, n:30,  h:0.18, bri:1.0},
+      {r:0.16, n:60,  h:0.10, bri:0.9},
+      {r:0.26, n:100, h:0.03, bri:0.8},
+      {r:0.36, n:140, h:-0.05,bri:0.7},
+      {r:0.48, n:180, h:-0.13,bri:0.6},
     ];
     let idx = 0;
     for (const {r,n,h,bri} of rings) {
@@ -959,7 +952,7 @@ async function initParticles(){
   for(let i=0; i<PCOUNT; i++){
     const a = Math.random()*Math.PI*2;
     const el = (Math.random()-0.5)*Math.PI;
-    const d  = 1.2 + Math.random()*1.8;
+    const d  = 2.2 + Math.random()*2.5;
     dispersePos[i*3]   = Math.cos(el)*Math.cos(a)*d;
     dispersePos[i*3+1] = Math.sin(el)*d*0.8;
     dispersePos[i*3+2] = Math.cos(el)*Math.sin(a)*d;
@@ -972,7 +965,7 @@ async function initParticles(){
   geo.userData = {targetPos, initPos, dispersePos};
 
   const mat = new THREE.PointsMaterial({
-    size: 0.002,
+    size: 0.006,
     vertexColors: true,
     transparent: true,
     opacity: 0,
@@ -1025,7 +1018,7 @@ function animParticles(ts){
     pMesh.geometry.attributes.position.needsUpdate = true;
     const breathe = 1 + Math.sin(ts*0.0008)*0.02;
     pMesh.scale.setScalar(breathe);
-    mat.size = 0.002 + Math.sin(ts*0.0012)*0.0003;
+    mat.size = 0.006 + Math.sin(ts*0.0012)*0.001;
   }
   else if(pState === 'dispersing'){
     pProgress = Math.min(pProgress + dt*0.7, 1);
@@ -1151,6 +1144,8 @@ async function launchTest() {
   document.getElementById('exit-btn').classList.add('active');
   document.getElementById('status-dot').classList.add('found');
   document.getElementById('status-text').textContent = 'INITIALIZING...';
+  // 如果GLB还没加载完，显示加载遮罩
+  if (!glbLoaded) showARLoadingOverlay();
   dbg('③ HUD 激活');
 
   // 3. 等一帧
@@ -1179,6 +1174,7 @@ async function launchTest() {
   dbg(`⑦ 渲染循环启动 pState:${pState}`);
 
   document.getElementById('status-text').textContent = 'TEST MODE';
+  if (glbLoaded) hideARLoadingOverlay();
 
   // 6. 聚合
   setTimeout(() => {
@@ -1317,5 +1313,18 @@ function exitAR(){
   goTo(2);
 }
 </script>
+
+<!-- 底部GLB进度条（全程可见） -->
+<div id="glb-progress-bar"><div id="glb-progress-fill"></div></div>
+<div id="glb-status">LOADING MODEL...</div>
+
+<!-- AR内部加载遮罩（GLB未就绪时） -->
+<div id="ar-loading-overlay">
+  <canvas id="ar-loading-canvas"></canvas>
+  <div class="alo-pct" id="alo-pct">0%</div>
+  <div class="alo-text">LOADING MODEL</div>
+  <div class="alo-bar-wrap"><div class="alo-bar" id="alo-bar"></div></div>
+</div>
+
 </body>
 </html>
