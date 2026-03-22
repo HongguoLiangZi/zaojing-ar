@@ -8,8 +8,7 @@
   <!-- A-Frame 先，MindAR 后 -->
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-  <!-- Three.js 粒子 -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
+  <!-- Three.js 由 MindAR 内部提供，不重复引入 -->
 
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@200;300&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
 
@@ -28,7 +27,7 @@
     @keyframes ci-dot-fade{0%{opacity:1;transform:scale(1);}60%{opacity:1;transform:scale(1.5);}100%{opacity:0;transform:scale(0);}}
 
     /* ── App三屏 ── */
-    #app{position:fixed;inset:0;z-index:100;opacity:0;transition:opacity 0.6s ease;font-family:'Share Tech Mono',monospace;}
+    #app{position:fixed;inset:0;z-index:100;opacity:1;transition:opacity 0.6s ease;font-family:'Share Tech Mono',monospace;animation:appFadeIn 0.8s ease forwards;}
     #app.visible{opacity:1;}
     .screen{position:absolute;inset:0;display:flex;flex-direction:column;transition:opacity 0.6s ease,transform 0.6s cubic-bezier(0.4,0,0.2,1);overflow-y:auto;}
     .screen.hidden{opacity:0;pointer-events:none;transform:translateX(60px);}
@@ -255,6 +254,8 @@
     .splash-sub{font-size:9px;letter-spacing:0.4em;color:rgba(100,180,255,0.4);text-align:center;line-height:2;margin-bottom:36px;}
     #start-btn{padding:14px 48px;background:transparent;border:1px solid rgba(100,180,255,0.4);color:rgba(150,210,255,0.8);font-size:10px;letter-spacing:0.5em;cursor:pointer;font-family:'Share Tech Mono',monospace;transition:all 0.3s;margin-bottom:16px;}
     #start-btn:hover{background:rgba(100,180,255,0.08);border-color:rgba(100,180,255,0.8);color:rgba(200,230,255,1);}
+    #test-btn{padding:10px 32px;background:transparent;border:1px solid rgba(100,180,255,0.2);color:rgba(100,180,255,0.45);font-size:9px;letter-spacing:0.45em;cursor:pointer;font-family:'Share Tech Mono',monospace;transition:all 0.3s;margin-bottom:0;}
+    #test-btn:hover{background:rgba(100,180,255,0.06);border-color:rgba(100,180,255,0.5);color:rgba(150,210,255,0.8);}
     .cam-hint{font-size:8px;letter-spacing:0.3em;color:rgba(100,180,255,0.2);}
     #screen-start .dots-only{position:absolute;top:22px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:3;}
     #screen-start .back-row{position:absolute;bottom:0;left:0;right:0;}
@@ -488,6 +489,7 @@
       <div class="splash-title">枢 · AXIS</div>
       <div class="splash-sub">AXIS · AR INTERACTIVE<br/>DIGITAL MEDIA ART · 2024</div>
       <button id="start-btn" onclick="launchAR()">▶ &nbsp; 启动 AR 体验</button>
+      <button id="test-btn" onclick="launchTest()">◈ &nbsp; TEST MODE</button>
       <div class="cam-hint">请允许摄像头访问权限</div>
     </div>
     <div class="back-row nav-btn-row">
@@ -564,73 +566,134 @@ window.addEventListener('DOMContentLoaded', ()=>{
    Three.js 粒子藻井系统
 ════════════════════════════════════ */
 let pScene, pCamera, pRenderer, pMesh;
+let touchRotX = 0, touchRotY = 0;  // 触摸旋转累计值
+let touchLastX = null, touchLastY = null;
+let isTestMode = false;
 let pState = 'idle';   // idle | assembling | active | dispersing
 let pProgress = 0;
 let pAnimId = null;
 let pLastTime = 0;
 const PCOUNT = 2500;
 
-function buildTargetPositions(){
-  const pos   = new Float32Array(PCOUNT * 3);
-  const col   = new Float32Array(PCOUNT * 3);
-  let i = 0;
+/* ════════════════════════════════════
+   GLB 顶点采样 → 粒子目标位置
+════════════════════════════════════ */
+let glbLoaded = false;
+let glbModel  = null;  // 实体模型引用（A-Frame entity）
 
-  // 五层同心圆环
-  const rings = [
-    {r:0.06, n:30,  h:0.10, bright:1.0},
-    {r:0.14, n:70,  h:0.07, bright:0.9},
-    {r:0.24, n:120, h:0.04, bright:0.8},
-    {r:0.34, n:170, h:0.01, bright:0.7},
-    {r:0.44, n:210, h:-0.02,bright:0.6},
-  ];
-  for(const ring of rings){
-    for(let j=0; j<ring.n && i<PCOUNT; j++,i++){
-      const a = (j/ring.n)*Math.PI*2;
-      const jx = (Math.random()-0.5)*0.012;
-      const jz = (Math.random()-0.5)*0.012;
-      pos[i*3]   = Math.cos(a)*ring.r + jx;
-      pos[i*3+1] = ring.h + (Math.random()-0.5)*0.015;
-      pos[i*3+2] = Math.sin(a)*ring.r + jz;
-      const b = ring.bright;
-      col[i*3]   = 0.2*b;
-      col[i*3+1] = 0.55*b;
-      col[i*3+2] = 1.0*b;
+async function loadGLBPoints() {
+  return new Promise((resolve) => {
+    // 动态加载 GLTFLoader
+    const existing = document.querySelector('script[data-gltf]');
+    if (existing && window.THREE && window.THREE.GLTFLoader) {
+      doLoad();
+      return;
     }
-  }
+    const s = document.createElement('script');
+    s.dataset.gltf = '1';
+    s.src = 'https://cdn.jsdelivr.net/npm/three@0.150.1/examples/js/loaders/GLTFLoader.js';
+    s.onload = doLoad;
+    document.head.appendChild(s);
 
-  // 八向辐射线
-  const SPOKES = 8;
-  const spokeLeft = Math.min(PCOUNT - i, 800);
-  const perSpoke  = Math.floor(spokeLeft / SPOKES);
-  for(let s=0; s<SPOKES && i<PCOUNT; s++){
-    const baseA = (s/SPOKES)*Math.PI*2;
-    for(let p=0; p<perSpoke && i<PCOUNT; p++,i++){
-      const dist = 0.03 + (p/perSpoke)*0.46;
-      const sp   = (Math.random()-0.5)*0.006;
-      pos[i*3]   = Math.cos(baseA+sp)*dist;
-      pos[i*3+1] = (Math.random()-0.5)*0.008;
-      pos[i*3+2] = Math.sin(baseA+sp)*dist;
-      // 辐射线更亮更白
-      col[i*3]   = 0.7 + Math.random()*0.3;
-      col[i*3+1] = 0.85;
-      col[i*3+2] = 1.0;
+    function doLoad() {
+      const THREE = window.THREE;
+      const loader = new THREE.GLTFLoader();
+      loader.load('./藻井整合2.glb', (gltf) => {
+        const allVerts = [];
+        gltf.scene.traverse(obj => {
+          if (!obj.isMesh) return;
+          obj.updateWorldMatrix(true, false);
+          const pos = obj.geometry.attributes.position;
+          if (!pos) return;
+          const mat = obj.matrixWorld;
+          // 采样：每 step 个顶点取一个
+          const total = pos.count;
+          const step  = Math.max(1, Math.floor(total / 600)); // 每个mesh限量
+          for (let i = 0; i < total; i += step) {
+            const v = new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(mat);
+            allVerts.push([v.x, v.y, v.z]);
+          }
+        });
+
+        // 归一化到 [-0.35, 0.35]
+        let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9,minZ=1e9,maxZ=-1e9;
+        for (const [x,y,z] of allVerts) {
+          if(x<minX)minX=x;if(x>maxX)maxX=x;
+          if(y<minY)minY=y;if(y>maxY)maxY=y;
+          if(z<minZ)minZ=z;if(z>maxZ)maxZ=z;
+        }
+        const cx=(minX+maxX)/2, cy=(minY+maxY)/2, cz=(minZ+maxZ)/2;
+        const sc = Math.max(maxX-minX, maxY-minY, maxZ-minZ) / 2;
+        const normalized = allVerts.map(([x,y,z]) => [
+          (x-cx)/sc * 0.35,
+          (y-cy)/sc * 0.35,
+          (z-cz)/sc * 0.35
+        ]);
+
+        glbLoaded = true;
+        console.log('GLB loaded:', normalized.length, 'sampled points');
+        resolve(normalized);
+      },
+      null,
+      (err) => {
+        console.warn('GLB load failed, using fallback:', err.message);
+        resolve(null); // 失败时用 fallback
+      });
     }
-  }
+  });
+}
 
-  // 剩余随机点缀
-  while(i < PCOUNT){
-    const a = Math.random()*Math.PI*2;
-    const r = Math.random()*0.5;
-    pos[i*3]   = Math.cos(a)*r;
-    pos[i*3+1] = (Math.random()-0.5)*0.08;
-    pos[i*3+2] = Math.sin(a)*r;
-    col[i*3]   = 0.1; col[i*3+1]=0.3; col[i*3+2]=0.7;
-    i++;
+function buildTargetPositions(glbPoints) {
+  const pos = new Float32Array(PCOUNT * 3);
+  const col = new Float32Array(PCOUNT * 3);
+
+  if (glbPoints && glbPoints.length > 0) {
+    // ── GLB 顶点模式 ──
+    for (let i = 0; i < PCOUNT; i++) {
+      const src = glbPoints[i % glbPoints.length];
+      // 加轻微随机抖动，让粒子感更自然
+      pos[i*3]   = src[0] + (Math.random()-0.5)*0.012;
+      pos[i*3+1] = src[1] + (Math.random()-0.5)*0.012;
+      pos[i*3+2] = src[2] + (Math.random()-0.5)*0.012;
+      // 颜色：根据高度冷暖渐变
+      const t = (src[1] + 0.35) / 0.7; // 0-1
+      col[i*3]   = 0.3 + t * 0.4;      // R: 蓝→亮
+      col[i*3+1] = 0.55 + t * 0.3;     // G
+      col[i*3+2] = 1.0;                 // B: 始终高蓝
+    }
+  } else {
+    // ── Fallback：同心圆环几何 ──
+    const rings = [
+      {r:0.06, n:30,  h:0.10, bri:1.0},
+      {r:0.12, n:60,  h:0.06, bri:0.9},
+      {r:0.19, n:100, h:0.02, bri:0.8},
+      {r:0.26, n:140, h:-0.03,bri:0.7},
+      {r:0.34, n:180, h:-0.08,bri:0.6},
+    ];
+    let idx = 0;
+    for (const {r,n,h,bri} of rings) {
+      const perRing = Math.floor(PCOUNT * n / 510);
+      for (let j = 0; j < perRing && idx < PCOUNT; j++, idx++) {
+        const a = (j/perRing)*Math.PI*2 + Math.random()*0.05;
+        pos[idx*3]   = Math.cos(a)*r + (Math.random()-0.5)*0.015;
+        pos[idx*3+1] = h + (Math.random()-0.5)*0.03;
+        pos[idx*3+2] = Math.sin(a)*r + (Math.random()-0.5)*0.015;
+        col[idx*3]   = 0.3*bri; col[idx*3+1] = 0.65*bri; col[idx*3+2] = 1.0;
+      }
+    }
+    while (idx < PCOUNT) {
+      const a=Math.random()*Math.PI*2, r=Math.random()*0.34;
+      pos[idx*3]=Math.cos(a)*r; pos[idx*3+1]=(Math.random()-0.5)*0.15; pos[idx*3+2]=Math.sin(a)*r;
+      col[idx*3]=0.2; col[idx*3+1]=0.5; col[idx*3+2]=1.0;
+      idx++;
+    }
   }
   return {pos, col};
 }
 
-function initParticles(){
+
+async function initParticles(){
+  if (!window.THREE) { console.error("THREE not available"); return; }
   const canvas = document.getElementById('particle-canvas');
   const W = window.innerWidth, H = window.innerHeight;
   canvas.width = W; canvas.height = H;
@@ -645,7 +708,9 @@ function initParticles(){
   pRenderer.setSize(W, H);
   pRenderer.setClearColor(0x000000, 0);
 
-  const {pos: targetPos, col} = buildTargetPositions();
+  // 加载 GLB 顶点作为粒子目标形状
+  const glbPoints = await loadGLBPoints();
+  const {pos: targetPos, col} = buildTargetPositions(glbPoints);
 
   // 初始：全堆中心
   const initPos = new Float32Array(PCOUNT*3);
@@ -655,7 +720,7 @@ function initParticles(){
     initPos[i*3+2] = (Math.random()-0.5)*0.04;
   }
 
-  // 散开位置：向外爆炸
+  // 散开位置
   const dispersePos = new Float32Array(PCOUNT*3);
   for(let i=0; i<PCOUNT; i++){
     const a = Math.random()*Math.PI*2;
@@ -710,9 +775,11 @@ function animParticles(ts){
     if(pProgress>=1) pState = 'active';
   }
   else if(pState === 'active'){
-    pMesh.rotation.y += dt * 0.12;
+    // 自动缓慢旋转 + 触摸旋转叠加
+    touchRotY += dt * 0.12;
+    pMesh.rotation.y = touchRotY;
+    pMesh.rotation.x = touchRotX * 0.6;
     mat.opacity = 1.0;
-    // 轻微呼吸缩放
     const breathe = 1 + Math.sin(ts*0.0008)*0.03;
     pMesh.scale.setScalar(breathe);
     mat.size = 0.0055 + Math.sin(ts*0.0012)*0.0008;
@@ -737,6 +804,7 @@ function animParticles(ts){
 function startAssembling(){
   pState = 'assembling';
   pProgress = 0;
+  touchRotY = 0; touchRotX = 0;
   pMesh.rotation.y = 0;
   pMesh.scale.setScalar(1);
   // 重置到中心
@@ -759,11 +827,77 @@ function startDispersing(){
 }
 
 /* ════════════════════════════════════
+   触摸 / 鼠标旋转控制
+════════════════════════════════════ */
+function initTouchRotation(canvas) {
+  // 触摸
+  canvas.addEventListener('touchstart', e => {
+    touchLastX = e.touches[0].clientX;
+    touchLastY = e.touches[0].clientY;
+  }, {passive:true});
+  canvas.addEventListener('touchmove', e => {
+    if (touchLastX === null || pState !== 'active') return;
+    const dx = e.touches[0].clientX - touchLastX;
+    const dy = e.touches[0].clientY - touchLastY;
+    touchRotY += dx * 0.008;
+    touchRotX = Math.max(-0.8, Math.min(0.8, touchRotX + dy * 0.006));
+    touchLastX = e.touches[0].clientX;
+    touchLastY = e.touches[0].clientY;
+  }, {passive:true});
+  canvas.addEventListener('touchend', () => { touchLastX = null; }, {passive:true});
+  // 鼠标（桌面测试用）
+  let mouseDown = false;
+  canvas.addEventListener('mousedown', e => { mouseDown = true; touchLastX = e.clientX; touchLastY = e.clientY; });
+  canvas.addEventListener('mousemove', e => {
+    if (!mouseDown || pState !== 'active') return;
+    const dx = e.clientX - touchLastX;
+    const dy = e.clientY - touchLastY;
+    touchRotY += dx * 0.006;
+    touchRotX = Math.max(-0.8, Math.min(0.8, touchRotX + dy * 0.005));
+    touchLastX = e.clientX; touchLastY = e.clientY;
+  });
+  canvas.addEventListener('mouseup', () => { mouseDown = false; });
+}
+
+/* ════════════════════════════════════
+   TEST MODE（无需识别图）
+════════════════════════════════════ */
+async function launchTest() {
+  if (arStarted) return;
+  arStarted = true;
+  isTestMode = true;
+  document.getElementById('app').style.display = 'none';
+
+  // 黑色背景替代摄像头
+  const wrap = document.getElementById('ar-wrap');
+  wrap.classList.add('active');
+  wrap.innerHTML = '<div style="position:absolute;inset:0;background:#03060f;"></div>';
+
+  // 初始化粒子
+  await initParticles();
+  const canvas = document.getElementById('particle-canvas');
+  canvas.classList.add('active');
+  canvas.style.pointerEvents = 'auto'; // 测试模式可交互
+  initTouchRotation(canvas);
+  pLastTime = performance.now();
+  pAnimId = requestAnimationFrame(animParticles);
+
+  // HUD
+  document.getElementById('hud').classList.add('active');
+  document.getElementById('exit-btn').classList.add('active');
+  document.getElementById('status-dot').classList.add('found');
+  document.getElementById('status-text').textContent = 'TEST MODE';
+
+  // 直接触发聚合
+  setTimeout(() => startAssembling(), 300);
+}
+
+/* ════════════════════════════════════
    AR 启动 / 退出
 ════════════════════════════════════ */
 let arStarted = false;
 
-function launchAR(){
+async function launchAR(){
   if(arStarted) return;
   arStarted = true;
   document.getElementById('app').style.display = 'none';
@@ -786,8 +920,11 @@ function launchAR(){
     </a-scene>`;
 
   // 初始化粒子 & 启动渲染循环
-  initParticles();
-  document.getElementById('particle-canvas').classList.add('active');
+  await initParticles();
+  const pcv = document.getElementById('particle-canvas');
+  pcv.classList.add('active');
+  pcv.style.pointerEvents = 'auto';
+  initTouchRotation(pcv);
   pLastTime = performance.now();
   pAnimId = requestAnimationFrame(animParticles);
 
@@ -809,15 +946,54 @@ function launchAR(){
         msg.style.opacity='1';
         setTimeout(()=>{msg.style.opacity='0';},2000);
         startAssembling();
+        // 聚合完成后显示实体模型
+        setTimeout(() => showGLBModel(target), 3200);
       });
       target.addEventListener('targetLost', ()=>{
         document.getElementById('status-dot').classList.remove('found');
         document.getElementById('status-text').textContent = 'SCANNING...';
         document.getElementById('scan-frame').style.display = 'block';
+        hideGLBModel();
         startDispersing();
       });
     });
   }, 200);
+}
+
+/* ── GLB 实体模型显示/隐藏 ── */
+function showGLBModel(targetEntity) {
+  if (!targetEntity) return;
+  // 如果已存在则不重复创建
+  if (targetEntity.querySelector('.glb-model')) return;
+  const el = document.createElement('a-gltf-model');
+  el.setAttribute('src', './藻井整合2.glb');
+  el.setAttribute('class', 'glb-model');
+  el.setAttribute('position', '0 0 0');
+  el.setAttribute('rotation', '-90 0 0');
+  el.setAttribute('scale', '0 0 0');
+  el.setAttribute('opacity', '0');
+  targetEntity.appendChild(el);
+  // 淡入：粒子同时淡出
+  let t = 0;
+  const fade = setInterval(() => {
+    t = Math.min(t + 0.04, 1);
+    const sc = (0.0005 * t).toFixed(5); // GLB单位通常较大，缩放到合适
+    el.setAttribute('scale', `${sc} ${sc} ${sc}`);
+    el.setAttribute('opacity', t.toFixed(2));
+    if (pMesh) pMesh.material.opacity = Math.max(0, 1 - t * 1.2);
+    if (t >= 1) clearInterval(fade);
+  }, 30);
+}
+
+function hideGLBModel() {
+  const el = document.querySelector('.glb-model');
+  if (!el) return;
+  let t = 1;
+  const fade = setInterval(() => {
+    t = Math.max(t - 0.06, 0);
+    el.setAttribute('opacity', t.toFixed(2));
+    if (t <= 0) { el.parentNode?.removeChild(el); clearInterval(fade); }
+  }, 30);
 }
 
 function exitAR(){
