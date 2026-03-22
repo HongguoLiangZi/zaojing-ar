@@ -744,9 +744,9 @@ function loadGLBInBackground() {
   const loader = new LoaderClass();
 
   // GLB 使用了 Draco 压缩，需要 DRACOLoader
-  // 动态加载 DRACOLoader
+  // 动态加载 DRACOLoader - 使用 unpkg CDN（更可靠）
   const dracoScript = document.createElement('script');
-  dracoScript.src = 'https://cdn.jsdelivr.net/npm/three@0.147.5/examples/js/loaders/DRACOLoader.js';
+  dracoScript.src = 'https://unpkg.com/three@0.147.5/examples/js/loaders/DRACOLoader.js';
   dracoScript.onload = () => {
     const DRACOLoader = THREE.DRACOLoader;
     if (DRACOLoader) {
