@@ -581,66 +581,88 @@ const PCOUNT = 2500;
 let glbLoaded = false;
 let glbModel  = null;  // 实体模型引用（A-Frame entity）
 
-async function loadGLBPoints() {
-  return new Promise((resolve) => {
-    // 动态加载 GLTFLoader
-    const existing = document.querySelector('script[data-gltf]');
-    if (existing && window.THREE && window.THREE.GLTFLoader) {
-      doLoad();
+// 在后台异步加载GLB，加载完后更新粒子形状
+function loadGLBInBackground() {
+  // 用 A-Frame 内置的 Three.js 对应版本 (r147)
+  const s = document.createElement('script');
+  s.dataset.gltf = '1';
+  s.src = 'https://cdn.jsdelivr.net/npm/three@0.147.5/examples/js/loaders/GLTFLoader.js';
+  s.onload = () => {
+    const THREE = window.THREE;
+    if (!THREE || !THREE.GLTFLoader) {
+      console.warn('GLTFLoader not available');
       return;
     }
-    const s = document.createElement('script');
-    s.dataset.gltf = '1';
-    s.src = 'https://cdn.jsdelivr.net/npm/three@0.150.1/examples/js/loaders/GLTFLoader.js';
-    s.onload = doLoad;
-    document.head.appendChild(s);
-
-    function doLoad() {
-      const THREE = window.THREE;
-      const loader = new THREE.GLTFLoader();
-      loader.load('./藻井整合2.glb', (gltf) => {
-        const allVerts = [];
-        gltf.scene.traverse(obj => {
-          if (!obj.isMesh) return;
-          obj.updateWorldMatrix(true, false);
-          const pos = obj.geometry.attributes.position;
-          if (!pos) return;
-          const mat = obj.matrixWorld;
-          // 采样：每 step 个顶点取一个
-          const total = pos.count;
-          const step  = Math.max(1, Math.floor(total / 600)); // 每个mesh限量
-          for (let i = 0; i < total; i += step) {
-            const v = new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(mat);
-            allVerts.push([v.x, v.y, v.z]);
-          }
-        });
-
-        // 归一化到 [-0.35, 0.35]
-        let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9,minZ=1e9,maxZ=-1e9;
-        for (const [x,y,z] of allVerts) {
-          if(x<minX)minX=x;if(x>maxX)maxX=x;
-          if(y<minY)minY=y;if(y>maxY)maxY=y;
-          if(z<minZ)minZ=z;if(z>maxZ)maxZ=z;
+    const loader = new THREE.GLTFLoader();
+    console.log('Loading GLB in background...');
+    loader.load('./藻井整合.glb', (gltf) => {
+      const allVerts = [];
+      gltf.scene.traverse(obj => {
+        if (!obj.isMesh) return;
+        obj.updateWorldMatrix(true, false);
+        const pos = obj.geometry.attributes.position;
+        if (!pos) return;
+        const mat = obj.matrixWorld;
+        const total = pos.count;
+        const step = Math.max(1, Math.floor(total / 400));
+        for (let i = 0; i < total; i += step) {
+          const v = new THREE.Vector3(
+            pos.getX(i), pos.getY(i), pos.getZ(i)
+          ).applyMatrix4(mat);
+          allVerts.push([v.x, v.y, v.z]);
         }
-        const cx=(minX+maxX)/2, cy=(minY+maxY)/2, cz=(minZ+maxZ)/2;
-        const sc = Math.max(maxX-minX, maxY-minY, maxZ-minZ) / 2;
-        const normalized = allVerts.map(([x,y,z]) => [
-          (x-cx)/sc * 0.35,
-          (y-cy)/sc * 0.35,
-          (z-cz)/sc * 0.35
-        ]);
-
-        glbLoaded = true;
-        console.log('GLB loaded:', normalized.length, 'sampled points');
-        resolve(normalized);
-      },
-      null,
-      (err) => {
-        console.warn('GLB load failed, using fallback:', err.message);
-        resolve(null); // 失败时用 fallback
       });
-    }
-  });
+      if (allVerts.length === 0) return;
+
+      // 归一化
+      let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9,minZ=1e9,maxZ=-1e9;
+      for (const [x,y,z] of allVerts) {
+        if(x<minX)minX=x;if(x>maxX)maxX=x;
+        if(y<minY)minY=y;if(y>maxY)maxY=y;
+        if(z<minZ)minZ=z;if(z>maxZ)maxZ=z;
+      }
+      const cx=(minX+maxX)/2, cy=(minY+maxY)/2, cz=(minZ+maxZ)/2;
+      const sc = Math.max(maxX-minX, maxY-minY, maxZ-minZ) / 2;
+      const normalized = allVerts.map(([x,y,z]) => [
+        (x-cx)/sc * 0.35,
+        (y-cy)/sc * 0.35,
+        (z-cz)/sc * 0.35
+      ]);
+
+      glbLoaded = true;
+      console.log('GLB loaded:', normalized.length, 'points');
+
+      // 如果粒子已经初始化，更新目标位置
+      if (pMesh) {
+        const {pos: newTarget} = buildTargetPositions(normalized);
+        pMesh.geometry.userData.targetPos = newTarget;
+        // 如果正在idle状态，等待下次识别会用新形状
+        // 如果正在active状态，平滑过渡到新形状
+        if (pState === 'active') {
+          const curPos = pMesh.geometry.attributes.position.array;
+          pMesh.geometry.userData.initPos = curPos.slice();
+          pMesh.geometry.userData.targetPos = newTarget;
+          pState = 'assembling';
+          pProgress = 0;
+        }
+      }
+    },
+    (prog) => {
+      if (prog.total > 0) {
+        const pct = Math.round(prog.loaded/prog.total*100);
+        if (pct % 25 === 0) console.log('GLB progress:', pct + '%');
+      }
+    },
+    (err) => console.warn('GLB failed:', err.message));
+  };
+  document.head.appendChild(s);
+}
+
+// loadGLBPoints 立即返回 null（用fallback），后台加载GLB
+async function loadGLBPoints() {
+  // 非阻塞：马上返回 null 用几何fallback，后台异步加载真实顶点
+  setTimeout(loadGLBInBackground, 500);
+  return null;
 }
 
 function buildTargetPositions(glbPoints) {
@@ -868,27 +890,35 @@ async function launchTest() {
   isTestMode = true;
   document.getElementById('app').style.display = 'none';
 
-  // 黑色背景替代摄像头
+  // 1. 先让 wrap 和 canvas 可见（WebGL 必须在可见 canvas 上才能初始化）
   const wrap = document.getElementById('ar-wrap');
   wrap.classList.add('active');
   wrap.innerHTML = '<div style="position:absolute;inset:0;background:#03060f;"></div>';
 
-  // 初始化粒子
-  await initParticles();
   const canvas = document.getElementById('particle-canvas');
   canvas.classList.add('active');
-  canvas.style.pointerEvents = 'auto'; // 测试模式可交互
+  canvas.style.pointerEvents = 'auto';
+
+  // 2. HUD 先显示 loading 状态
+  document.getElementById('hud').classList.add('active');
+  document.getElementById('exit-btn').classList.add('active');
+  document.getElementById('status-dot').classList.add('found');
+  document.getElementById('status-text').textContent = 'INITIALIZING...';
+
+  // 3. 等一帧让 DOM 完成渲染
+  await new Promise(r => requestAnimationFrame(r));
+
+  // 4. 初始化粒子（canvas 已可见，WebGL 可以正常工作）
+  await initParticles();
+
+  // 5. 启动渲染循环
   initTouchRotation(canvas);
   pLastTime = performance.now();
   pAnimId = requestAnimationFrame(animParticles);
 
-  // HUD
-  document.getElementById('hud').classList.add('active');
-  document.getElementById('exit-btn').classList.add('active');
-  document.getElementById('status-dot').classList.add('found');
   document.getElementById('status-text').textContent = 'TEST MODE';
 
-  // 直接触发聚合
+  // 6. 触发聚合
   setTimeout(() => startAssembling(), 300);
 }
 
@@ -924,8 +954,8 @@ async function launchAR(){
   const pcv = document.getElementById('particle-canvas');
   pcv.classList.add('active');
   pcv.style.pointerEvents = 'auto';
-  initTouchRotation(pcv);
-  pLastTime = performance.now();
+  // 等一帧让canvas可见
+  await new Promise(r => requestAnimationFrame(r));
   pAnimId = requestAnimationFrame(animParticles);
 
   document.getElementById('hud').classList.add('active');
@@ -966,7 +996,7 @@ function showGLBModel(targetEntity) {
   // 如果已存在则不重复创建
   if (targetEntity.querySelector('.glb-model')) return;
   const el = document.createElement('a-gltf-model');
-  el.setAttribute('src', './藻井整合2.glb');
+  el.setAttribute('src', './藻井整合.glb');
   el.setAttribute('class', 'glb-model');
   el.setAttribute('position', '0 0 0');
   el.setAttribute('rotation', '-90 0 0');
