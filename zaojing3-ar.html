@@ -581,82 +581,128 @@ const PCOUNT = 2500;
 let glbLoaded = false;
 let glbModel  = null;  // 实体模型引用（A-Frame entity）
 
-// 在后台异步加载GLB，加载完后更新粒子形状
+// 在后台异步加载GLB，用 A-Frame 内置的 THREE.GLTFLoader
 function loadGLBInBackground() {
-  // 用 A-Frame 内置的 Three.js 对应版本 (r147)
-  const s = document.createElement('script');
-  s.dataset.gltf = '1';
-  s.src = 'https://cdn.jsdelivr.net/npm/three@0.147.5/examples/js/loaders/GLTFLoader.js';
-  s.onload = () => {
-    const THREE = window.THREE;
-    if (!THREE || !THREE.GLTFLoader) {
-      console.warn('GLTFLoader not available');
-      return;
-    }
-    const loader = new THREE.GLTFLoader();
-    console.log('Loading GLB in background...');
-    loader.load('./藻井整合.glb', (gltf) => {
-      const allVerts = [];
-      gltf.scene.traverse(obj => {
-        if (!obj.isMesh) return;
-        obj.updateWorldMatrix(true, false);
-        const pos = obj.geometry.attributes.position;
-        if (!pos) return;
-        const mat = obj.matrixWorld;
-        const total = pos.count;
-        const step = Math.max(1, Math.floor(total / 400));
-        for (let i = 0; i < total; i += step) {
-          const v = new THREE.Vector3(
-            pos.getX(i), pos.getY(i), pos.getZ(i)
-          ).applyMatrix4(mat);
-          allVerts.push([v.x, v.y, v.z]);
-        }
-      });
-      if (allVerts.length === 0) return;
+  const THREE = window.THREE;
+  if (!THREE) { console.warn('THREE not found'); return; }
 
-      // 归一化
-      let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9,minZ=1e9,maxZ=-1e9;
-      for (const [x,y,z] of allVerts) {
-        if(x<minX)minX=x;if(x>maxX)maxX=x;
-        if(y<minY)minY=y;if(y>maxY)maxY=y;
-        if(z<minZ)minZ=z;if(z>maxZ)maxZ=z;
-      }
-      const cx=(minX+maxX)/2, cy=(minY+maxY)/2, cz=(minZ+maxZ)/2;
-      const sc = Math.max(maxX-minX, maxY-minY, maxZ-minZ) / 2;
-      const normalized = allVerts.map(([x,y,z]) => [
-        (x-cx)/sc * 0.35,
-        (y-cy)/sc * 0.35,
-        (z-cz)/sc * 0.35
-      ]);
+  // A-Frame 已经把 GLTFLoader 挂在 THREE 上了
+  const LoaderClass = THREE.GLTFLoader || (THREE.Loader && THREE.Loader.GLTFLoader);
+  if (!LoaderClass) {
+    // 手动用 fetch + ArrayBuffer 解析，不依赖 GLTFLoader
+    console.log('GLTFLoader not found, trying fetch approach');
+    loadGLBViaFetch();
+    return;
+  }
 
-      glbLoaded = true;
-      console.log('GLB loaded:', normalized.length, 'points');
-
-      // 如果粒子已经初始化，更新目标位置
-      if (pMesh) {
-        const {pos: newTarget} = buildTargetPositions(normalized);
-        pMesh.geometry.userData.targetPos = newTarget;
-        // 如果正在idle状态，等待下次识别会用新形状
-        // 如果正在active状态，平滑过渡到新形状
-        if (pState === 'active') {
-          const curPos = pMesh.geometry.attributes.position.array;
-          pMesh.geometry.userData.initPos = curPos.slice();
-          pMesh.geometry.userData.targetPos = newTarget;
-          pState = 'assembling';
-          pProgress = 0;
-        }
-      }
-    },
-    (prog) => {
-      if (prog.total > 0) {
-        const pct = Math.round(prog.loaded/prog.total*100);
-        if (pct % 25 === 0) console.log('GLB progress:', pct + '%');
-      }
-    },
-    (err) => console.warn('GLB failed:', err.message));
-  };
-  document.head.appendChild(s);
+  console.log('Loading GLB via THREE.GLTFLoader...');
+  const loader = new LoaderClass();
+  loader.load('./藻井整合.glb',
+    (gltf) => processGLB(gltf.scene),
+    (prog) => { if(prog.total>0) console.log('GLB:', Math.round(prog.loaded/prog.total*100)+'%'); },
+    (err) => { console.warn('GLTFLoader failed:', err.message); loadGLBViaFetch(); }
+  );
 }
+
+// 备用方案：fetch GLB 用 THREE.ObjectLoader 解析（纯顶点提取）
+async function loadGLBViaFetch() {
+  try {
+    console.log('Fetching GLB via fetch...');
+    const resp = await fetch('./藻井整合.glb');
+    if (!resp.ok) throw new Error('fetch failed: ' + resp.status);
+    const buf = await resp.arrayBuffer();
+    console.log('GLB fetched, size:', (buf.byteLength/1024/1024).toFixed(1)+'MB');
+
+    // 手动解析 GLB binary
+    const view = new DataView(buf);
+    const magic = view.getUint32(0, true);
+    if (magic !== 0x46546C67) { console.warn('Not a GLB file'); return; }
+
+    const jsonLen = view.getUint32(12, true);
+    const jsonStr = new TextDecoder().decode(new Uint8Array(buf, 20, jsonLen));
+    const json = JSON.parse(jsonStr);
+
+    const binStart = 20 + jsonLen + 8;
+    const binData = new Uint8Array(buf, binStart);
+
+    // 提取所有 POSITION accessor
+    const allVerts = [];
+    for (const mesh of (json.meshes || [])) {
+      for (const prim of (mesh.primitives || [])) {
+        const accIdx = prim.attributes?.POSITION;
+        if (accIdx == null) continue;
+        const acc = json.accessors[accIdx];
+        const bv  = json.bufferViews[acc.bufferView];
+        const offset = (bv.byteOffset || 0) + (acc.byteOffset || 0);
+        const count  = acc.count;
+        const stride = bv.byteStride || 12;
+        const step   = Math.max(1, Math.floor(count / 400));
+        for (let i = 0; i < count; i += step) {
+          const o = offset + i * stride;
+          const x = new DataView(binData.buffer, binData.byteOffset+o, 4).getFloat32(0, true);
+          const y = new DataView(binData.buffer, binData.byteOffset+o+4, 4).getFloat32(0, true);
+          const z = new DataView(binData.buffer, binData.byteOffset+o+8, 4).getFloat32(0, true);
+          if (!isNaN(x+y+z)) allVerts.push([x, y, z]);
+        }
+      }
+    }
+    console.log('Parsed vertices:', allVerts.length);
+    if (allVerts.length > 0) applyGLBPoints(allVerts);
+  } catch(e) {
+    console.warn('loadGLBViaFetch failed:', e.message);
+  }
+}
+
+function processGLB(scene) {
+  const THREE = window.THREE;
+  const allVerts = [];
+  scene.traverse(obj => {
+    if (!obj.isMesh) return;
+    obj.updateWorldMatrix(true, false);
+    const pos = obj.geometry.attributes.position;
+    if (!pos) return;
+    const mat = obj.matrixWorld;
+    const total = pos.count;
+    const step = Math.max(1, Math.floor(total / 400));
+    for (let i = 0; i < total; i += step) {
+      const v = new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(mat);
+      allVerts.push([v.x, v.y, v.z]);
+    }
+  });
+  console.log('GLB processGLB vertices:', allVerts.length);
+  if (allVerts.length > 0) applyGLBPoints(allVerts);
+}
+
+function applyGLBPoints(allVerts) {
+  // 归一化
+  let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9,minZ=1e9,maxZ=-1e9;
+  for (const [x,y,z] of allVerts) {
+    if(x<minX)minX=x;if(x>maxX)maxX=x;
+    if(y<minY)minY=y;if(y>maxY)maxY=y;
+    if(z<minZ)minZ=z;if(z>maxZ)maxZ=z;
+  }
+  const cx=(minX+maxX)/2, cy=(minY+maxY)/2, cz=(minZ+maxZ)/2;
+  const sc = Math.max(maxX-minX, maxY-minY, maxZ-minZ) / 2;
+  const normalized = allVerts.map(([x,y,z]) => [
+    (x-cx)/sc*0.35, (y-cy)/sc*0.35, (z-cz)/sc*0.35
+  ]);
+
+  glbLoaded = true;
+  console.log('GLB applied:', normalized.length, 'points');
+
+  // 更新粒子目标形状
+  if (pMesh) {
+    const {pos: newTarget} = buildTargetPositions(normalized);
+    pMesh.geometry.userData.targetPos = newTarget;
+    if (pState === 'active' || pState === 'assembling') {
+      const curPos = pMesh.geometry.attributes.position.array;
+      pMesh.geometry.userData.initPos = curPos.slice();
+      pState = 'assembling';
+      pProgress = 0;
+    }
+  }
+}
+
 
 // loadGLBPoints 立即返回 null（用fallback），后台加载GLB
 async function loadGLBPoints() {
