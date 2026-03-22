@@ -628,12 +628,13 @@ function goTo(idx){
 
 /* ── 进场动画 ── */
 window.addEventListener('DOMContentLoaded', ()=>{
-  // 立刻开始预加载 GLB（不等用户操作）
+  // 立刻显示加载遮罩 + 开始预加载 GLB
   setTimeout(() => {
+    showARLoadingOverlay();   // 进入就显示流动粒子遮罩
     console.log('Pre-loading GLB...');
     setGLBProgress(0);
     loadGLBInBackground();
-  }, 800);  // 等页面渲染完再开始
+  }, 300);
 
   setTimeout(()=>{
     document.getElementById('app').classList.add('visible');
@@ -733,28 +734,53 @@ function loadGLBInBackground() {
   const THREE = window.THREE;
   if (!THREE) { console.warn('THREE not found'); return; }
 
-  // A-Frame 已经把 GLTFLoader 挂在 THREE 上了
-  const LoaderClass = THREE.GLTFLoader || (THREE.Loader && THREE.Loader.GLTFLoader);
+  const LoaderClass = THREE.GLTFLoader;
   if (!LoaderClass) {
-    // 手动用 fetch + ArrayBuffer 解析，不依赖 GLTFLoader
-    console.log('GLTFLoader not found, trying fetch approach');
-    loadGLBViaFetch();
+    console.warn('GLTFLoader not found');
     return;
   }
 
-  console.log('Loading GLB via THREE.GLTFLoader...');
+  console.log('Loading GLB with DRACOLoader...');
   const loader = new LoaderClass();
-  loader.load('./藻井整合.glb',
-    (gltf) => processGLB(gltf.scene),
-    (prog) => {
-      if(prog.total>0) {
-        const pct = Math.round(prog.loaded/prog.total*100);
-        setGLBProgress(pct);
-        if(pct % 25 === 0) console.log('GLB:', pct+'%');
-      }
-    },
-    (err) => { console.warn('GLTFLoader failed:', err.message); loadGLBViaFetch(); }
-  );
+
+  // GLB 使用了 Draco 压缩，需要 DRACOLoader
+  // 动态加载 DRACOLoader
+  const dracoScript = document.createElement('script');
+  dracoScript.src = 'https://cdn.jsdelivr.net/npm/three@0.147.5/examples/js/loaders/DRACOLoader.js';
+  dracoScript.onload = () => {
+    const DRACOLoader = THREE.DRACOLoader;
+    if (DRACOLoader) {
+      const dracoLoader = new DRACOLoader();
+      dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+      loader.setDRACOLoader(dracoLoader);
+      console.log('DRACOLoader set');
+    }
+    doLoad();
+  };
+  dracoScript.onerror = () => {
+    console.warn('DRACOLoader script failed, trying without');
+    doLoad();
+  };
+  document.head.appendChild(dracoScript);
+
+  function doLoad() {
+    loader.load('./藻井整合.glb',
+      (gltf) => processGLB(gltf.scene),
+      (prog) => {
+        if(prog.total > 0) {
+          const pct = Math.round(prog.loaded / prog.total * 100);
+          setGLBProgress(Math.min(pct, 99));
+          if(pct % 25 === 0) console.log('GLB:', pct+'%');
+        } else {
+          // total 未知时用字节数估算
+          const mb = (prog.loaded / 1024 / 1024).toFixed(1);
+          const est = Math.min(90, Math.round(prog.loaded / 7800000 * 100));
+          setGLBProgress(est);
+        }
+      },
+      (err) => console.warn('GLTFLoader failed:', err.message)
+    );
+  }
 }
 
 // 备用方案：fetch GLB 用 THREE.ObjectLoader 解析（纯顶点提取）
