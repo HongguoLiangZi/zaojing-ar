@@ -336,12 +336,13 @@
     position:fixed;inset:0;
     z-index:200;
     background:#03060f;
-    display:flex;flex-direction:column;
+    display:none; /* 改为 none，不再阻挡界面 */
+    flex-direction:column;
     align-items:center;justify-content:center;
     pointer-events:none;
     opacity:0;transition:opacity 0.5s;
   }
-  #ar-loading-overlay.active { opacity:1; pointer-events:auto; }
+  #ar-loading-overlay.active { opacity:1; pointer-events:auto; display:flex; }
   #ar-loading-canvas {
     position:absolute;inset:0;width:100%;height:100%;
   }
@@ -630,7 +631,7 @@ function goTo(idx){
 window.addEventListener('DOMContentLoaded', ()=>{
   // 立刻显示加载遮罩 + 开始预加载 GLB
   setTimeout(() => {
-    showARLoadingOverlay();   // 进入就显示流动粒子遮罩
+    // showARLoadingOverlay();   // 不再显示全屏遮罩
     console.log('Pre-loading GLB...');
     setGLBProgress(0);
     loadGLBInBackground();
@@ -1170,8 +1171,8 @@ async function launchTest() {
   document.getElementById('exit-btn').classList.add('active');
   document.getElementById('status-dot').classList.add('found');
   document.getElementById('status-text').textContent = 'INITIALIZING...';
-  // 如果GLB还没加载完，显示加载遮罩
-  if (!glbLoaded) showARLoadingOverlay();
+  // 如果GLB还没加载完，只显示底部进度条（不显示全屏遮罩）
+  // if (!glbLoaded) showARLoadingOverlay();
   dbg('③ HUD 激活');
 
   // 3. 等一帧
