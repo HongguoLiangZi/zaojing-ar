@@ -752,7 +752,7 @@ function loadGLBInBackground() {
     const DRACOLoader = THREE.DRACOLoader;
     if (DRACOLoader) {
       const dracoLoader = new DRACOLoader();
-      dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+      dracoLoader.setDecoderPath('./draco/');
       loader.setDRACOLoader(dracoLoader);
       console.log('DRACOLoader set');
     }
