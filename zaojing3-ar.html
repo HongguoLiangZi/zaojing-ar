@@ -532,14 +532,6 @@
           </div>
         </div>
       </div>
-      <div class="tag" style="margin-bottom:10px;">HIRO MARKER · 识别图</div>
-      <div class="marker-wrap">
-        <img src="https://jeromeetienne.github.io/AR.js/data/images/HIRO.jpg" alt="Hiro marker" onerror="this.style.display='none'"/>
-        <div class="marker-info">
-          <div class="mlabel">HIRO MARKER</div>
-          <p>AR识别图（Hiro标记）<br/>可截图打印或投屏显示<br/>建议在良好光线环境下使用</p>
-        </div>
-      </div>
       <div class="next-hint" onclick="goTo(2)" style="padding:12px 0 0;">
         <div class="hint-txt">READY · 前往启动</div>
         <div class="arrow"></div>
@@ -1148,6 +1140,11 @@ async function initParticles(){
   });
 
   pMesh = new THREE.Points(geo, mat);
+  
+  // 修复位置和大小：向下移动，整体放大
+  pMesh.position.set(0, -0.35, 0);  // Y轴负值 = 向下移动
+  pMesh.scale.set(0.9, 0.9, 0.9);    // 放大到0.9倍
+  
   pScene.add(pMesh);
 }
 
