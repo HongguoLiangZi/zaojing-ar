@@ -1092,8 +1092,8 @@ async function initParticles(){
 
   pScene  = new THREE.Scene();
   pCamera = new THREE.PerspectiveCamera(55, W/H, 0.01, 50);
-  pCamera.position.set(0, 0.28, 0.72);
-  pCamera.lookAt(0, 0, 0);
+  pCamera.position.set(0, 0, 0.72);  // 相机居中，只在Z轴（深度）上后退
+  pCamera.lookAt(0, -0.15, 0);      // 看向模型中心（模型在-0.35，所以看向-0.15左右居中）
 
   pRenderer = new THREE.WebGLRenderer({canvas, alpha:true, antialias:true});
   pRenderer.setPixelRatio(window.devicePixelRatio);
@@ -1141,9 +1141,9 @@ async function initParticles(){
 
   pMesh = new THREE.Points(geo, mat);
   
-  // 修复位置和大小：向下移动，整体放大
-  pMesh.position.set(0, -0.35, 0);  // Y轴负值 = 向下移动
-  pMesh.scale.set(0.9, 0.9, 0.9);    // 放大到0.9倍
+  // 修复位置和大小：模型位置要和相机lookAt一致
+  pMesh.position.set(0, -0.15, 0);  // 和相机lookAt的Y值一致
+  pMesh.scale.set(1.0, 1.0, 1.0);    // 保持原始大小
   
   pScene.add(pMesh);
 }
